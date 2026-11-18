@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calculatePackCoins, formatTimer, formatUzs, validatePlayerInput } from './format';
+import { calculatePackCoins, formatTimer, formatUzs, validatePlayerInput } from './utils/format';
 
 test('formatUzs formats integer UZS amounts with space separators', () => {
   assert.equal(formatUzs(13000, 'so‘m'), '13 000 so‘m');

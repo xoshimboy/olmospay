@@ -3,15 +3,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
-import { handler as soraHandler } from './netlify/functions/sora.js';
-import { handler as orderHandler } from './netlify/functions/order.js';
-import { handler as orderStatusHandler } from './netlify/functions/order-status.js';
-import { handler as tgWebhookHandler, processTelegramUpdate } from './netlify/functions/tg-webhook.js';
-import { handler as adminMediaHandler } from './netlify/functions/admin-media.js';
-import { handler as adminPanelHandler } from './netlify/functions/admin-panel.js';
-import { handler as userCoinsHandler } from './netlify/functions/user-coins.js';
-import { soraRequest, telegramApi, verifyAdminAccess } from './netlify/functions/_lib.js';
-import { buildProjectZipBuffer } from './netlify/functions/_zip.js';
+import { handler as soraHandler } from './sora.js';
+import { handler as orderHandler } from './order.js';
+import { handler as orderStatusHandler } from './order-status.js';
+import { handler as tgWebhookHandler, processTelegramUpdate } from './tg-webhook.js';
+import { handler as adminMediaHandler } from './admin-media.js';
+import { handler as adminPanelHandler } from './admin-panel.js';
+import { handler as userCoinsHandler } from './user-coins.js';
+import { soraRequest, telegramApi, verifyAdminAccess } from './_lib.js';
+import { buildProjectZipBuffer } from './_zip.js';
 
 dotenv.config();
 

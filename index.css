@@ -1,0 +1,134 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --gold-1: #007aff;
+  --gold-2: #0066d6;
+  --bg: #f4f7fc;
+  --surface: #ffffff;
+  --surface-muted: #eef2f8;
+  --ink: #1c1c1e;
+  --ink-muted: #6c6c70;
+  --line: rgba(60, 60, 67, 0.1);
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Outfit", system-ui, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", monospace;
+}
+
+.dark,
+body.theme-dark {
+  --gold-1: #e5b94c;
+  --gold-2: #c69320;
+  --bg: #09090b;
+  --surface: #121216;
+  --surface-muted: #18181d;
+  --ink: #f8fafc;
+  --ink-muted: #a1a1aa;
+  --line: rgba(229, 185, 76, 0.16);
+}
+
+html,
+body {
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+  overflow-x: hidden;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-mono-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.pb-safe {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+.pt-safe {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+}
+
+@keyframes ios-orb-drift-a {
+  0%,
+  100% {
+    transform: translate3d(0%, 0%, 0) scale(1);
+  }
+  33% {
+    transform: translate3d(14%, -10%, 0) scale(1.12);
+  }
+  66% {
+    transform: translate3d(-10%, 12%, 0) scale(0.94);
+  }
+}
+
+@keyframes ios-orb-drift-b {
+  0%,
+  100% {
+    transform: translate3d(0%, 0%, 0) scale(1);
+  }
+  40% {
+    transform: translate3d(-16%, 10%, 0) scale(1.15);
+  }
+  75% {
+    transform: translate3d(10%, -14%, 0) scale(0.92);
+  }
+}
+
+@keyframes ios-orb-drift-c {
+  0%,
+  100% {
+    transform: translate3d(0%, 0%, 0) scale(1) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(12%, 8%, 0) scale(1.08) rotate(12deg);
+  }
+}
+
+.animate-ios-orb-a {
+  animation: ios-orb-drift-a 16s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  will-change: transform;
+}
+
+.animate-ios-orb-b {
+  animation: ios-orb-drift-b 20s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  will-change: transform;
+}
+
+.animate-ios-orb-c {
+  animation: ios-orb-drift-c 24s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  will-change: transform;
+}
+
+.ios-glass-card {
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(24px) saturate(185%);
+  -webkit-backdrop-filter: blur(24px) saturate(185%);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  box-shadow:
+    0 8px 28px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+.dark .ios-glass-card {
+  background: rgba(18, 18, 22, 0.78);
+  border: 1px solid rgba(229, 185, 76, 0.16);
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

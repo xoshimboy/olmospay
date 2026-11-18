@@ -1,0 +1,787 @@
+/**
+ * Server-side authoritative catalog and Sora Reseller API mapping.
+ *
+ * Includes:
+ * - Game Donat: PUBG Mobile, Free Fire, Mobile Legends, Bigo Live
+ * - Telegram Services: Stars, Premium, Gifts, NFT Gifts (when stocked), TG Account, Giveaway
+ * - SMM Services: Telegram, Instagram, YouTube, TikTok
+ * - Cards: Steam
+ *
+ * Sora service/item/quantity codes are verified against live GET /services and GET /catalog?service=...&lang=uz.
+ */
+
+export const SORA_SERVICES = {
+  pubg: { service: 'gmvdpia85', name: 'PUBG MOBILE', type: 'game', fields: ['item', 'player_id'] },
+  freefire: { service: 'gmvdplqyx', name: 'FREE FIRE', type: 'game', fields: ['item', 'player_id', 'region'] },
+  mlbb: { service: 'g_mlbb', name: 'MOBILE LEGENDS', type: 'game', fields: ['item', 'player_id', 'server', 'region'] },
+  bigo: { service: 'g_bigo', name: 'BIGO LIVE', type: 'game', fields: ['item', 'player_id'] },
+  'tg-stars': { service: 'gmvci7pul', name: 'STARS', type: 'telegram', fields: ['quantity', 'target'] },
+  'tg-premium': { service: 'gmvci8gu6', name: 'PREMIUM', type: 'telegram', fields: ['item', 'target'] },
+  'tg-gifts': { service: 'gmvgsbfg4', name: 'GIFTS', type: 'gift', fields: ['item', 'target'] },
+  'tg-nft': { service: 'gmw3wk8p9', name: 'NFT GIFTS', type: 'nft', fields: ['collection', 'item', 'target'] },
+  smm: { service: 'gmvqmt8mo', name: 'SMM XIZMATLAR', type: 'smm', fields: ['item', 'quantity', 'link'] },
+};
+
+export const PAYMENT_CARD = {
+  number: '9860 0000 0000 0000',
+  holder: 'OLMOS PAY',
+  bank: 'Humo / Uzcard',
+};
+
+export const CATALOG = [
+  // ================= GAME DONAT =================
+  {
+    id: 'pubg',
+    name: 'PUBG Mobile',
+    badge: 'GLOBAL',
+    category: 'games',
+    subtitle: 'Global UC · UID orqali',
+    inputType: 'player_id',
+    inputLabel: {
+      uz: 'PUBG Character ID',
+      ru: 'Character ID PUBG',
+      en: 'PUBG Character ID',
+    },
+    inputPlaceholder: '5123456789',
+    requiresServer: false,
+    soraService: 'gmvdpia85',
+    packs: [
+      {
+        id: 'pubg_60',
+        label: '60 UC',
+        amount: 60,
+        unit: 'UC',
+        priceUzs: 13000,
+        sora: { service: 'gmvdpia85', item: '264', type: 'game', expectedSoraPrice: 12100 },
+      },
+      {
+        id: 'pubg_325',
+        label: '325 UC',
+        amount: 325,
+        unit: 'UC',
+        priceUzs: 64000,
+        sora: { service: 'gmvdpia85', item: '248', type: 'game', expectedSoraPrice: 60900 },
+      },
+      {
+        id: 'pubg_660',
+        label: '660 UC',
+        amount: 660,
+        unit: 'UC',
+        priceUzs: 128000,
+        sora: { service: 'gmvdpia85', item: '258', type: 'game', expectedSoraPrice: 121900 },
+      },
+      {
+        id: 'pubg_1800',
+        label: '1800 UC',
+        amount: 1800,
+        unit: 'UC',
+        priceUzs: 309000,
+        sora: { service: 'gmvdpia85', item: '2968', type: 'game', expectedSoraPrice: 293700 },
+      },
+      {
+        id: 'pubg_2460',
+        label: '2460 UC',
+        amount: 2460,
+        unit: 'UC',
+        priceUzs: 435000,
+        sora: { service: 'gmvdpia85', item: '259', type: 'game', expectedSoraPrice: 415900 },
+      },
+      {
+        id: 'pubg_elite',
+        label: 'Elite Pass LV1-50',
+        amount: 1,
+        unit: 'Pass',
+        priceUzs: 75000,
+        sora: { service: 'gmvdpia85', item: '255', type: 'game', expectedSoraPrice: 70000 },
+      },
+    ],
+  },
+  {
+    id: 'freefire',
+    name: 'Free Fire',
+    badge: 'GLOBAL',
+    category: 'games',
+    subtitle: 'Olmoslar · ID orqali tez yetkazish',
+    inputType: 'player_id',
+    inputLabel: {
+      uz: 'Free Fire Player ID',
+      ru: 'Player ID Free Fire',
+      en: 'Free Fire Player ID',
+    },
+    inputPlaceholder: '1234567890',
+    requiresServer: false,
+    soraService: 'gmvdplqyx',
+    packs: [
+      {
+        id: 'ff_100',
+        label: '100 + 10 Olmos',
+        amount: 110,
+        unit: 'Olmos',
+        priceUzs: 12000,
+        sora: { service: 'gmvdplqyx', item: '2055', type: 'game', region: '0', expectedSoraPrice: 10700 },
+      },
+      {
+        id: 'ff_310',
+        label: '310 + 31 Olmos',
+        amount: 341,
+        unit: 'Olmos',
+        priceUzs: 35000,
+        sora: { service: 'gmvdplqyx', item: '2056', type: 'game', region: '0', expectedSoraPrice: 32500 },
+      },
+      {
+        id: 'ff_520',
+        label: '520 + 52 Olmos',
+        amount: 572,
+        unit: 'Olmos',
+        priceUzs: 56000,
+        sora: { service: 'gmvdplqyx', item: '2057', type: 'game', region: '0', expectedSoraPrice: 52700 },
+      },
+      {
+        id: 'ff_1060',
+        label: '1060 + 106 Olmos',
+        amount: 1166,
+        unit: 'Olmos',
+        priceUzs: 112000,
+        sora: { service: 'gmvdplqyx', item: '2063', type: 'game', region: '0', expectedSoraPrice: 105500 },
+      },
+      {
+        id: 'ff_2180',
+        label: '2180 + 218 Olmos',
+        amount: 2398,
+        unit: 'Olmos',
+        priceUzs: 224000,
+        sora: { service: 'gmvdplqyx', item: '2050', type: 'game', region: '0', expectedSoraPrice: 211300 },
+      },
+      {
+        id: 'ff_weekly',
+        label: 'Haftalik aʼzolik',
+        amount: 1,
+        unit: 'Pass',
+        priceUzs: 23000,
+        sora: { service: 'gmvdplqyx', item: '2067', type: 'game', region: '0', expectedSoraPrice: 21100 },
+      },
+    ],
+  },
+  {
+    id: 'mlbb',
+    name: 'Mobile Legends',
+    badge: 'GLOBAL',
+    category: 'games',
+    subtitle: 'Olmoslar · User ID + Server ID',
+    inputType: 'player_id',
+    inputLabel: {
+      uz: 'User ID (Masalan: 123456789)',
+      ru: 'User ID (напр. 123456789)',
+      en: 'User ID (e.g. 123456789)',
+    },
+    inputPlaceholder: '123456789',
+    requiresServer: true,
+    serverLabel: {
+      uz: 'Server / Zone ID',
+      ru: 'Server / Zone ID',
+      en: 'Server / Zone ID',
+    },
+    serverPlaceholder: '1234',
+    soraService: 'g_mlbb',
+    packs: [
+      {
+        id: 'ml_86',
+        label: '86 Olmos',
+        amount: 86,
+        unit: 'Olmos',
+        priceUzs: 15000,
+        sora: { service: 'g_mlbb', item: '2794', type: 'game', region: '0', expectedSoraPrice: 13900 },
+      },
+      {
+        id: 'ml_172',
+        label: '172 Olmos',
+        amount: 172,
+        unit: 'Olmos',
+        priceUzs: 30000,
+        sora: { service: 'g_mlbb', item: '2719', type: 'game', region: '0', expectedSoraPrice: 27800 },
+      },
+      {
+        id: 'ml_257',
+        label: '275 Olmos',
+        amount: 275,
+        unit: 'Olmos',
+        priceUzs: 46000,
+        sora: { service: 'g_mlbb', item: '2720', type: 'game', region: '0', expectedSoraPrice: 42600 },
+      },
+      {
+        id: 'ml_706',
+        label: '706 Olmos',
+        amount: 706,
+        unit: 'Olmos',
+        priceUzs: 115000,
+        sora: { service: 'g_mlbb', item: '2765', type: 'game', region: '0', expectedSoraPrice: 108800 },
+      },
+      {
+        id: 'ml_2195',
+        label: '2195 Olmos',
+        amount: 2195,
+        unit: 'Olmos',
+        priceUzs: 349000,
+        sora: { service: 'g_mlbb', item: '2725', type: 'game', region: '0', expectedSoraPrice: 329200 },
+      },
+      {
+        id: 'ml_twilight',
+        label: 'Weekly Diamond Pass',
+        amount: 1,
+        unit: 'Pass',
+        priceUzs: 19000,
+        sora: { service: 'g_mlbb', item: '2819', type: 'game', region: '0', expectedSoraPrice: 17300 },
+      },
+    ],
+  },
+  {
+    id: 'bigo',
+    name: 'Bigo Live',
+    badge: 'BIGO',
+    category: 'games',
+    subtitle: 'Bigo Diamonds · Bigo ID orqali',
+    inputType: 'player_id',
+    inputLabel: {
+      uz: 'Bigo Live ID',
+      ru: 'Bigo Live ID',
+      en: 'Bigo Live ID',
+    },
+    inputPlaceholder: '901234567',
+    requiresServer: false,
+    soraService: 'g_bigo',
+    packs: [
+      {
+        id: 'bigo_50',
+        label: '50 Diamonds',
+        amount: 50,
+        unit: 'Diamonds',
+        priceUzs: 14000,
+        sora: { service: 'g_bigo', item: '2441', type: 'game', expectedSoraPrice: 12300 },
+      },
+      {
+        id: 'bigo_100',
+        label: '100 Diamonds',
+        amount: 100,
+        unit: 'Diamonds',
+        priceUzs: 27000,
+        sora: { service: 'g_bigo', item: '2421', type: 'game', expectedSoraPrice: 24700 },
+      },
+      {
+        id: 'bigo_300',
+        label: '300 Diamonds',
+        amount: 300,
+        unit: 'Diamonds',
+        priceUzs: 79000,
+        sora: { service: 'g_bigo', item: '2436', type: 'game', expectedSoraPrice: 74000 },
+      },
+      {
+        id: 'bigo_500',
+        label: '500 Diamonds',
+        amount: 500,
+        unit: 'Diamonds',
+        priceUzs: 130000,
+        sora: { service: 'g_bigo', item: '2437', type: 'game', expectedSoraPrice: 123100 },
+      },
+      {
+        id: 'bigo_1000',
+        label: '1000 Diamonds',
+        amount: 1000,
+        unit: 'Diamonds',
+        priceUzs: 259000,
+        sora: { service: 'g_bigo', item: '2423', type: 'game', expectedSoraPrice: 246200 },
+      },
+    ],
+  },
+  {
+    id: 'steam',
+    name: 'Steam',
+    badge: 'GLOBAL',
+    category: 'cards',
+    subtitle: 'Steam hamyon to‘ldirish · Login orqali',
+    inputType: 'player_id',
+    inputLabel: {
+      uz: 'Steam Login (nikneyim emas)',
+      ru: 'Логин Steam (не никнейм)',
+      en: 'Steam Login (not display name)',
+    },
+    inputPlaceholder: 'steam_login',
+    requiresServer: false,
+    soraService: null,
+    packs: [
+      { id: 'steam_5', label: '5 USD Hamyon', amount: 5, unit: 'USD', priceUzs: 68000, sora: null },
+      { id: 'steam_10', label: '10 USD Hamyon', amount: 10, unit: 'USD', priceUzs: 134000, sora: null },
+      { id: 'steam_20', label: '20 USD Hamyon', amount: 20, unit: 'USD', priceUzs: 266000, sora: null },
+      { id: 'steam_50', label: '50 USD Hamyon', amount: 50, unit: 'USD', priceUzs: 659000, sora: null },
+    ],
+  },
+
+  // ================= TELEGRAM XIZMATLARI =================
+  {
+    id: 'tg-stars',
+    name: 'Stars',
+    badge: 'AVTO',
+    category: 'telegram',
+    subtitle: 'Telegram Stars · @username orqali',
+    inputType: 'username',
+    inputLabel: {
+      uz: 'Telegram @username',
+      ru: 'Telegram @username',
+      en: 'Telegram @username',
+    },
+    inputPlaceholder: '@username',
+    requiresServer: false,
+    soraService: 'gmvci7pul',
+    packs: [
+      {
+        id: 'tg_stars_50',
+        label: '50 Telegram Stars',
+        amount: 50,
+        unit: 'Stars',
+        priceUzs: 13000,
+        sora: { service: 'gmvci7pul', quantity: 50, type: 'telegram' },
+      },
+      {
+        id: 'tg_stars_100',
+        label: '100 Telegram Stars',
+        amount: 100,
+        unit: 'Stars',
+        priceUzs: 25000,
+        sora: { service: 'gmvci7pul', quantity: 100, type: 'telegram' },
+      },
+      {
+        id: 'tg_stars_250',
+        label: '250 Telegram Stars',
+        amount: 250,
+        unit: 'Stars',
+        priceUzs: 61000,
+        sora: { service: 'gmvci7pul', quantity: 250, type: 'telegram' },
+      },
+      {
+        id: 'tg_stars_500',
+        label: '500 Telegram Stars',
+        amount: 500,
+        unit: 'Stars',
+        priceUzs: 118000,
+        sora: { service: 'gmvci7pul', quantity: 500, type: 'telegram' },
+      },
+      {
+        id: 'tg_stars_1000',
+        label: '1000 Telegram Stars',
+        amount: 1000,
+        unit: 'Stars',
+        priceUzs: 232000,
+        sora: { service: 'gmvci7pul', quantity: 1000, type: 'telegram' },
+      },
+    ],
+  },
+  {
+    id: 'tg-premium',
+    name: 'Premium',
+    badge: 'AVTO',
+    category: 'telegram',
+    subtitle: 'Telegram Premium · @username orqali',
+    inputType: 'username',
+    inputLabel: {
+      uz: 'Telegram @username',
+      ru: 'Telegram @username',
+      en: 'Telegram @username',
+    },
+    inputPlaceholder: '@username',
+    requiresServer: false,
+    soraService: 'gmvci8gu6',
+    packs: [
+      {
+        id: 'tg_prem_3m',
+        label: 'Telegram Premium · 3 oy',
+        amount: 3,
+        unit: 'Oy',
+        priceUzs: 189000,
+        sora: { service: 'gmvci8gu6', item: '0.0', type: 'telegram', expectedSoraPrice: 177999 },
+      },
+      {
+        id: 'tg_prem_6m',
+        label: 'Telegram Premium · 6 oy',
+        amount: 6,
+        unit: 'Oy',
+        priceUzs: 255000,
+        sora: { service: 'gmvci8gu6', item: '0.1', type: 'telegram', expectedSoraPrice: 239999 },
+      },
+      {
+        id: 'tg_prem_12m',
+        label: 'Telegram Premium · 12 oy',
+        amount: 12,
+        unit: 'Oy',
+        priceUzs: 419000,
+        sora: { service: 'gmvci8gu6', item: '0.2', type: 'telegram', expectedSoraPrice: 395999 },
+      },
+    ],
+  },
+  {
+    id: 'tg-gifts',
+    name: 'Gifts',
+    badge: 'GIFTS',
+    category: 'telegram',
+    subtitle: 'Telegram Gifts · @username ga sovg‘a',
+    inputType: 'username',
+    inputLabel: {
+      uz: 'Qabul qiluvchi @username',
+      ru: '@username получателя',
+      en: 'Recipient @username',
+    },
+    inputPlaceholder: '@username',
+    requiresServer: false,
+    soraService: 'gmvgsbfg4',
+    packs: [
+      {
+        id: 'tg_gift_15',
+        label: '🧸 Ayiqcha Sovg‘a',
+        amount: 1,
+        unit: 'Gift',
+        priceUzs: 4000,
+        sora: { service: 'gmvgsbfg4', item: '5170233102089322756', type: 'gift', expectedSoraPrice: 3150 },
+      },
+      {
+        id: 'tg_gift_25',
+        label: '🎁 Sovg‘a qutisi',
+        amount: 1,
+        unit: 'Gift',
+        priceUzs: 6500,
+        sora: { service: 'gmvgsbfg4', item: '5170250947678437525', type: 'gift', expectedSoraPrice: 5250 },
+      },
+      {
+        id: 'tg_gift_50',
+        label: '🎂 Tort Sovg‘a',
+        amount: 1,
+        unit: 'Gift',
+        priceUzs: 12000,
+        sora: { service: 'gmvgsbfg4', item: '5170144170496491616', type: 'gift', expectedSoraPrice: 10500 },
+      },
+      {
+        id: 'tg_gift_100',
+        label: '🏆 Kubok Sovg‘a',
+        amount: 1,
+        unit: 'Gift',
+        priceUzs: 24000,
+        sora: { service: 'gmvgsbfg4', item: '5168043875654172773', type: 'gift', expectedSoraPrice: 21000 },
+      },
+      {
+        id: 'tg_gift_500',
+        label: '💎 Olmos Sovg‘a',
+        amount: 1,
+        unit: 'Gift',
+        priceUzs: 24000,
+        sora: { service: 'gmvgsbfg4', item: '5170521118301225164', type: 'gift', expectedSoraPrice: 21000 },
+      },
+    ],
+  },
+  {
+    id: 'tg-account',
+    name: 'TG Account',
+    badge: 'GARANT',
+    category: 'telegram',
+    subtitle: 'Kafolatli Telegram hisoblar',
+    inputType: 'username',
+    inputLabel: {
+      uz: 'Aloqa uchun @username',
+      ru: 'Ваш @username для связи',
+      en: 'Your contact @username',
+    },
+    inputPlaceholder: '@username',
+    requiresServer: false,
+    soraService: null,
+    packs: [
+      { id: 'tg_acc_uz', label: 'UZ Raqamli Account (Garant)', amount: 1, unit: 'Acc', priceUzs: 45000, sora: null },
+      { id: 'tg_acc_us', label: 'USA / Global Account', amount: 1, unit: 'Acc', priceUzs: 35000, sora: null },
+      { id: 'tg_acc_aged', label: 'Eski (Aged) Telegram Account', amount: 1, unit: 'Acc', priceUzs: 85000, sora: null },
+    ],
+  },
+  {
+    id: 'tg-giveaway',
+    name: 'Giveaway',
+    badge: 'YANGI',
+    category: 'telegram',
+    subtitle: 'Telegram kanal uchun Premium Giveaway',
+    inputType: 'username',
+    inputLabel: {
+      uz: 'Kanal @username manzili',
+      ru: '@username канала',
+      en: 'Channel @username',
+    },
+    inputPlaceholder: '@kanal_nomi',
+    requiresServer: false,
+    soraService: null,
+    packs: [
+      { id: 'tg_gw_3', label: '3x Premium (3 oylik) Giveaway', amount: 3, unit: 'G‘olib', priceUzs: 560000, sora: null },
+      { id: 'tg_gw_5', label: '5x Premium (3 oylik) Giveaway', amount: 5, unit: 'G‘olib', priceUzs: 920000, sora: null },
+      { id: 'tg_gw_10', label: '10x Premium (3 oylik) Giveaway', amount: 10, unit: 'G‘olib', priceUzs: 1810000, sora: null },
+    ],
+  },
+
+  // ================= SMM XIZMATLAR =================
+  {
+    id: 'smm-telegram',
+    name: 'Telegram',
+    badge: '100+',
+    category: 'smm',
+    subtitle: '100 so‘m dan · Obunachi, ko‘rish, reaksiya',
+    inputType: 'url',
+    inputLabel: {
+      uz: 'Telegram kanal yoki post havolasi',
+      ru: 'Ссылка на канал или пост Telegram',
+      en: 'Telegram channel or post link',
+    },
+    inputPlaceholder: 'https://t.me/kanal_nomi',
+    requiresServer: false,
+    soraService: 'gmvqmt8mo',
+    packs: [
+      {
+        id: 'smm_tg_views_1k',
+        label: '1 000 Post ko‘rish (Darhol)',
+        amount: 1000,
+        unit: 'Views',
+        priceUzs: 1000,
+        sora: { service: 'gmvqmt8mo', item: '513d81c82a18', quantity: 1000, type: 'smm' },
+      },
+      {
+        id: 'smm_tg_react_1k',
+        label: '1 000 Ijobiy reaksiya',
+        amount: 1000,
+        unit: 'React',
+        priceUzs: 2000,
+        sora: { service: 'gmvqmt8mo', item: 'cc1ade935e0a', quantity: 1000, type: 'smm' },
+      },
+      {
+        id: 'smm_tg_sub_1k',
+        label: '1 000 Obunachi (30 kun kafolat)',
+        amount: 1000,
+        unit: 'Sub',
+        priceUzs: 5000,
+        sora: { service: 'gmvqmt8mo', item: '667198b12637', quantity: 1000, type: 'smm' },
+      },
+      {
+        id: 'smm_tg_sub_5k',
+        label: '1 000 O‘zbek obunachi (Kafolat)',
+        amount: 1000,
+        unit: 'Sub',
+        priceUzs: 15000,
+        sora: { service: 'gmvqmt8mo', item: '790e86e3a965', quantity: 1000, type: 'smm' },
+      },
+    ],
+  },
+  {
+    id: 'smm-instagram',
+    name: 'Instagram',
+    badge: '76',
+    category: 'smm',
+    subtitle: '100 so‘m dan · Layk, Reels ko‘rish, obunachi',
+    inputType: 'url',
+    inputLabel: {
+      uz: 'Instagram profil yoki post havolasi',
+      ru: 'Ссылка на профиль или пост Instagram',
+      en: 'Instagram profile or post link',
+    },
+    inputPlaceholder: 'https://instagram.com/username',
+    requiresServer: false,
+    soraService: 'gmvqmt8mo',
+    packs: [
+      {
+        id: 'smm_ig_like_1k',
+        label: '1 000 Layk (Tezkor · No Drop)',
+        amount: 1000,
+        unit: 'Likes',
+        priceUzs: 5000,
+        sora: { service: 'gmvqmt8mo', item: 'b7d1b808f1c4', quantity: 1000, type: 'smm' },
+      },
+      {
+        id: 'smm_ig_reels_10k',
+        label: '10 000 Reels ko‘rish',
+        amount: 10000,
+        unit: 'Views',
+        priceUzs: 3000,
+        sora: { service: 'gmvqmt8mo', item: 'c262d29eac75', quantity: 10000, type: 'smm' },
+      },
+      {
+        id: 'smm_ig_sub_1k',
+        label: '1 000 Obunachi',
+        amount: 1000,
+        unit: 'Followers',
+        priceUzs: 15000,
+        sora: { service: 'gmvqmt8mo', item: '6956d6cc0e6c', quantity: 1000, type: 'smm' },
+      },
+      {
+        id: 'smm_ig_sub_5k',
+        label: '1 000 Real Obunachi (30D Refill)',
+        amount: 1000,
+        unit: 'Followers',
+        priceUzs: 59000,
+        sora: { service: 'gmvqmt8mo', item: '0abf092637b1', quantity: 1000, type: 'smm' },
+      },
+    ],
+  },
+  {
+    id: 'smm-youtube',
+    name: 'YouTube',
+    badge: '298',
+    category: 'smm',
+    subtitle: '2 000 so‘m dan · Ko‘rish, layk, obunachi',
+    inputType: 'url',
+    inputLabel: {
+      uz: 'YouTube video yoki kanal havolasi',
+      ru: 'Ссылка на видео или канал YouTube',
+      en: 'YouTube video or channel link',
+    },
+    inputPlaceholder: 'https://youtube.com/watch?v=...',
+    requiresServer: false,
+    soraService: 'gmvqmt8mo',
+    packs: [
+      {
+        id: 'smm_yt_views_1k',
+        label: '1 000 Ko‘rish (30D Refill)',
+        amount: 1000,
+        unit: 'Views',
+        priceUzs: 13000,
+        sora: { service: 'gmvqmt8mo', item: 'ae65f700ca2c', quantity: 1000, type: 'smm' },
+      },
+      {
+        id: 'smm_yt_like_500',
+        label: '500 Real Layk',
+        amount: 500,
+        unit: 'Likes',
+        priceUzs: 20000,
+        sora: { service: 'gmvqmt8mo', item: 'b919d92fe0f2', quantity: 500, type: 'smm' },
+      },
+      {
+        id: 'smm_yt_sub_1k',
+        label: '500 Kanal Obunachi',
+        amount: 500,
+        unit: 'Sub',
+        priceUzs: 49000,
+        sora: { service: 'gmvqmt8mo', item: 'd9a540db4231', quantity: 500, type: 'smm' },
+      },
+    ],
+  },
+  {
+    id: 'smm-tiktok',
+    name: 'TikTok',
+    badge: '67',
+    category: 'smm',
+    subtitle: '700 so‘m dan · Ko‘rish, layk, obunachi',
+    inputType: 'url',
+    inputLabel: {
+      uz: 'TikTok video yoki profil havolasi',
+      ru: 'Ссылка на видео или профиль TikTok',
+      en: 'TikTok video or profile link',
+    },
+    inputPlaceholder: 'https://tiktok.com/@username',
+    requiresServer: false,
+    soraService: 'gmvqmt8mo',
+    packs: [
+      {
+        id: 'smm_tt_views_10k',
+        label: '10 000 Video ko‘rish',
+        amount: 10000,
+        unit: 'Views',
+        priceUzs: 9000,
+        sora: { service: 'gmvqmt8mo', item: '76d115e2a0fe', quantity: 10000, type: 'smm' },
+      },
+      {
+        id: 'smm_tt_like_1k',
+        label: '1 000 Real Layk',
+        amount: 1000,
+        unit: 'Likes',
+        priceUzs: 39000,
+        sora: { service: 'gmvqmt8mo', item: '085df796b5d4', quantity: 1000, type: 'smm' },
+      },
+      {
+        id: 'smm_tt_sub_1k',
+        label: '1 000 Real Obunachi',
+        amount: 1000,
+        unit: 'Followers',
+        priceUzs: 49000,
+        sora: { service: 'gmvqmt8mo', item: 'b1677eca158f', quantity: 1000, type: 'smm' },
+      },
+    ],
+  },
+];
+
+export function calculatePackCoins({ amount = 0, unit = '', category = 'games', priceUzs = 0 } = {}) {
+  const qty = Number(amount || 0);
+  const price = Number(priceUzs || 0);
+  const cleanUnit = String(unit || '').trim().toLowerCase();
+
+  // Direct 10% coin rate: 60 UC -> 6 coins, 110 Olmos -> 11, 86 Olmos -> 8, 50 Diamonds -> 5, 50 Stars -> 5
+  if ((category === 'games' && qty >= 10 && cleanUnit !== 'pass') || cleanUnit === 'stars') {
+    return Math.max(1, Math.floor(qty / 10));
+  }
+
+  // Proportional rate for passes, cards, Telegram gifts/premium/accounts, and SMM (13,000 UZS ≈ 6 coins)
+  return Math.max(1, Math.round(price / 2200));
+}
+
+export function resolveCatalogPack(gameId, packId) {
+  const game = CATALOG.find((g) => g.id === gameId);
+  if (!game) return null;
+  const pack = game.packs.find((p) => p.id === packId);
+  if (!pack) return null;
+  const priceUzs = Math.round(Number(pack.priceUzs));
+  const coinsReward = calculatePackCoins({
+    amount: pack.amount,
+    unit: pack.unit,
+    category: game.category,
+    priceUzs,
+  });
+  return {
+    gameId: game.id,
+    gameName: game.name,
+    category: game.category,
+    inputType: game.inputType,
+    requiresServer: Boolean(game.requiresServer),
+    packId: pack.id,
+    packLabel: pack.label,
+    priceUzs,
+    coinsReward,
+    sora: pack.sora
+      ? {
+          service: String(pack.sora.service),
+          item: pack.sora.item ? String(pack.sora.item) : '',
+          quantity: pack.sora.quantity ? Math.round(Number(pack.sora.quantity)) : undefined,
+          type: String(pack.sora.type || 'game'),
+          region: pack.sora.region ? String(pack.sora.region) : '',
+          expectedSoraPrice: pack.sora.expectedSoraPrice
+            ? Math.round(Number(pack.sora.expectedSoraPrice))
+            : undefined,
+        }
+      : null,
+  };
+}
+
+export function getPublicCatalog() {
+  return CATALOG.map((game) => ({
+    id: game.id,
+    name: game.name,
+    badge: game.badge || '',
+    category: game.category,
+    subtitle: game.subtitle,
+    inputType: game.inputType,
+    inputLabel: game.inputLabel,
+    inputPlaceholder: game.inputPlaceholder,
+    requiresServer: Boolean(game.requiresServer),
+    serverLabel: game.serverLabel || null,
+    serverPlaceholder: game.serverPlaceholder || null,
+    soraService: game.soraService,
+    packs: game.packs.map((p) => ({
+      id: p.id,
+      label: p.label,
+      amount: p.amount,
+      unit: p.unit,
+      priceUzs: p.priceUzs,
+      coinsReward: calculatePackCoins({
+        amount: p.amount,
+        unit: p.unit,
+        category: game.category,
+        priceUzs: p.priceUzs,
+      }),
+      autoDelivery: Boolean(p.sora && p.sora.service && (p.sora.item || p.sora.quantity)),
+    })),
+  }));
+}

@@ -8,7 +8,7 @@
       "maxDuration": 60
     },
     "api/export-zip.js": {
-      "includeFiles": "**/*"
+      "includeFiles": "{*.js,*.ts,*.tsx,*.json,*.css,*.html,*.md,*.lock,api/**/*,bot/**/*,components/**/*,data/**/*,public/**/*,src/**/*,utils/**/*}"
     }
   },
   "rewrites": [

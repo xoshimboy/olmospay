@@ -3,9 +3,21 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "functions": {
+    "api/netlify/[name].js": {
+      "maxDuration": 60
+    },
+    "api/export-zip.js": {
+      "includeFiles": "**/*"
+    }
+  },
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/.netlify/functions/:name",
+      "destination": "/api/netlify/:name"
+    },
+    {
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ],

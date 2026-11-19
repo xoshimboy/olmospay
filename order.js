@@ -2,6 +2,7 @@ import { resolveCatalogPack } from './_catalog-map.js';
 import {
   checkRateLimit,
   escapeHtml,
+  ensureTelegramWebhook,
   formatOrdLine,
   generateOrderRef,
   getClientIp,
@@ -103,7 +104,7 @@ export async function handler(event) {
   if (!receipt.ok) {
     const errMap = {
       receipt_required: 'To‘lov cheki rasmini yuklang',
-      receipt_too_large: 'Chek rasmi hajmi 4 MB dan oshmasligi kerak',
+      receipt_too_large: 'Chek rasmi hajmi 3 MB dan oshmasligi kerak',
       invalid_receipt_format: 'Faqat JPEG, PNG yoki WebP rasm yuklang',
       invalid_receipt_magic: 'Rasm fayli buzilgan yoki noto‘g‘ri formatda',
     };
@@ -150,6 +151,11 @@ export async function handler(event) {
   // 7. Send receipt & inline approval controls to Telegram Admin (if configured)
   let adminNotified = false;
   if (botToken && adminId) {
+    const webhook = await ensureTelegramWebhook();
+    if (!webhook.ok && !webhook.skipped) {
+      console.error('[Telegram webhook setup error]', webhook.error || 'unknown');
+    }
+
     const userDisplay = tgUser
       ? `${escapeHtml(tgUser.first_name || 'Mijoz')} ${tgUser.username ? `(@${escapeHtml(tgUser.username)})` : ''} · ID: <code>${escapeHtml(tgUser.id)}</code>`
       : `Veb-brauzer mehmoni`;

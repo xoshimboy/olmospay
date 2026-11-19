@@ -1,9 +1,11 @@
 import crypto from 'node:crypto';
 import { getStore } from '@netlify/blobs';
+import { desc, eq, like, sql } from 'drizzle-orm';
+import { getDatabase, olmosAppState, olmosOrders, olmosRateLimits } from './db.js';
 import { PAYMENT_CARD, resolveCatalogPack } from './_catalog-map.js';
 
 const SORA_BASE_URL = 'https://sorapay.xuss.us/reseller/v1';
-const MAX_RECEIPT_BYTES = 4 * 1024 * 1024; // 4 MB limit (respecting Netlify 6 MB payload ceiling)
+const MAX_RECEIPT_BYTES = 3 * 1024 * 1024; // Keep base64 JSON payload below Vercel's 4.5 MB function limit
 const AUTH_MAX_AGE_SECONDS = 86400; // 24 hours
 const CATALOG_CACHE_TTL_MS = 120_000; // 2 minutes (respecting 30 req/min Sora limit)
 const ADMIN_TOKEN_TTL_SEC = 12 * 3600; // 12 hours
@@ -17,6 +19,38 @@ const memoryRateLimits = new Map();
 const memoryServiceMedia = new Map();
 let memoryCardSettings = null;
 const soraCache = new Map();
+let telegramWebhookConfiguredAt = 0;
+
+async function getAppStateValue(key) {
+  const database = getDatabase();
+  if (!database) return null;
+  const [row] = await database
+    .select({ value: olmosAppState.value })
+    .from(olmosAppState)
+    .where(eq(olmosAppState.key, key))
+    .limit(1);
+  return row?.value ?? null;
+}
+
+async function setAppStateValue(key, value) {
+  const database = getDatabase();
+  if (!database) return null;
+  await database
+    .insert(olmosAppState)
+    .values({ key, value, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: olmosAppState.key,
+      set: { value, updatedAt: new Date() },
+    });
+  return value;
+}
+
+export function getTelegramWebhookSecret() {
+  const configured = String(process.env.TG_WEBHOOK_SECRET || '').trim();
+  if (configured) return configured;
+  const botToken = String(process.env.TG_BOT_TOKEN || '');
+  return botToken ? crypto.createHmac('sha256', botToken).update('olmos-pay-telegram-webhook').digest('hex') : '';
+}
 
 export function getCorsHeaders(requestOrigin = '') {
   const allowedRaw = process.env.ALLOWED_ORIGIN || 'https://gamepin.uz';
@@ -25,11 +59,21 @@ export function getCorsHeaders(requestOrigin = '') {
     .map((s) => s.trim())
     .filter(Boolean);
 
-  for (const extra of [process.env.APP_URL, process.env.URL]) {
-    const clean = String(extra || '').trim();
-    if (clean.startsWith('http') && !clean.includes('MY_APP_URL') && !allowedList.includes(clean)) {
-      allowedList.push(clean);
+  for (const extra of [
+    process.env.APP_URL,
+    process.env.URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    process.env.VERCEL_URL,
+  ]) {
+    const raw = String(extra || '').trim();
+    if (!raw || raw.includes('MY_APP_URL')) continue;
+    let clean;
+    try {
+      clean = raw.startsWith('http') ? new URL(raw).origin : `https://${raw}`;
+    } catch {
+      continue;
     }
+    if (!allowedList.includes(clean)) allowedList.push(clean);
   }
 
   if (process.env.NODE_ENV !== 'production' || process.env.NETLIFY_DEV === 'true') {
@@ -327,6 +371,28 @@ function getOrdersBlobStore() {
 }
 
 export async function saveOrder(order) {
+  const database = getDatabase();
+  if (database) {
+    await database
+      .insert(olmosOrders)
+      .values({
+        ref: order.ref,
+        tgUserId: order.tgUserId ? String(order.tgUserId) : null,
+        orderData: order,
+        createdAt: Number(order.createdAt || Date.now()),
+        updatedAt: Number(order.updatedAt || Date.now()),
+      })
+      .onConflictDoUpdate({
+        target: olmosOrders.ref,
+        set: {
+          tgUserId: order.tgUserId ? String(order.tgUserId) : null,
+          orderData: order,
+          updatedAt: Number(order.updatedAt || Date.now()),
+        },
+      });
+    return order;
+  }
+
   const store = getOrdersBlobStore();
   if (store) {
     await store.setJSON(`order:${order.ref}`, order);
@@ -361,6 +427,12 @@ export async function saveOrder(order) {
 
 export async function getOrder(ref) {
   if (!ref || !/^[A-Za-z0-9_.:-]{1,64}$/.test(ref)) return null;
+  const database = getDatabase();
+  if (database) {
+    const [row] = await database.select({ orderData: olmosOrders.orderData }).from(olmosOrders).where(eq(olmosOrders.ref, ref)).limit(1);
+    return row?.orderData || null;
+  }
+
   const store = getOrdersBlobStore();
   if (store) {
     return (await store.get(`order:${ref}`, { type: 'json' }).catch(() => null)) || null;
@@ -378,6 +450,17 @@ export async function updateOrder(ref, patch) {
 
 export async function getUserOrders(tgUserId) {
   if (!tgUserId) return [];
+  const database = getDatabase();
+  if (database) {
+    const rows = await database
+      .select({ orderData: olmosOrders.orderData })
+      .from(olmosOrders)
+      .where(eq(olmosOrders.tgUserId, String(tgUserId)))
+      .orderBy(desc(olmosOrders.createdAt))
+      .limit(20);
+    return rows.map((row) => row.orderData).filter(Boolean);
+  }
+
   const store = getOrdersBlobStore();
   let refs = [];
   if (store) {
@@ -390,6 +473,17 @@ export async function getUserOrders(tgUserId) {
 }
 
 export async function listAllOrders(limit = 60) {
+  const database = getDatabase();
+  if (database) {
+    const safeLimit = Math.max(1, Math.min(100, Number(limit) || 60));
+    const rows = await database
+      .select({ orderData: olmosOrders.orderData })
+      .from(olmosOrders)
+      .orderBy(desc(olmosOrders.createdAt))
+      .limit(safeLimit);
+    return rows.map((row) => row.orderData).filter(Boolean);
+  }
+
   const store = getOrdersBlobStore();
   let refs = [];
   if (store) {
@@ -406,9 +500,12 @@ export async function getUserCoins(tgUserId) {
   if (!uid) {
     return { balance: 0, totalEarned: 0, history: [] };
   }
+  const database = getDatabase();
   const store = getOrdersBlobStore();
   let data = null;
-  if (store) {
+  if (database) {
+    data = await getAppStateValue(`coins:${uid}`);
+  } else if (store) {
     data = await store.get(`coins:${uid}`, { type: 'json' }).catch(() => null);
   } else {
     data = memoryUserCoins.get(uid) || null;
@@ -477,8 +574,11 @@ export async function creditOrderCoins(order) {
     ].slice(0, 50),
   };
 
+  const database = getDatabase();
   const store = getOrdersBlobStore();
-  if (store) {
+  if (database) {
+    await setAppStateValue(`coins:${uid}`, next);
+  } else if (store) {
     await store.setJSON(`coins:${uid}`, next);
   } else {
     memoryUserCoins.set(uid, next);
@@ -499,6 +599,15 @@ function getMediaBlobStore() {
 }
 
 export async function getAllServiceMedia() {
+  const database = getDatabase();
+  if (database) {
+    const rows = await database
+      .select({ key: olmosAppState.key, value: olmosAppState.value })
+      .from(olmosAppState)
+      .where(like(olmosAppState.key, 'service-media:%'));
+    return Object.fromEntries(rows.map(({ key, value }) => [key.slice('service-media:'.length), value]));
+  }
+
   const store = getMediaBlobStore();
   if (store) {
     const data = (await store.get('service-covers', { type: 'json' }).catch(() => null)) || {};
@@ -512,6 +621,12 @@ export async function saveServiceMedia(gameId, dataUrl) {
   if (!/^(?:[a-z0-9-]{2,32}|pack:[a-z0-9_-]{2,48})$/.test(cleanId)) {
     throw new Error('invalid_game_id');
   }
+  const database = getDatabase();
+  if (database) {
+    await setAppStateValue(`service-media:${cleanId}`, dataUrl);
+    return getAllServiceMedia();
+  }
+
   const store = getMediaBlobStore();
   if (store) {
     const current = await getAllServiceMedia();
@@ -528,6 +643,12 @@ export async function deleteServiceMedia(gameId) {
   if (!/^(?:[a-z0-9-]{2,32}|pack:[a-z0-9_-]{2,48})$/.test(cleanId)) {
     throw new Error('invalid_game_id');
   }
+  const database = getDatabase();
+  if (database) {
+    await database.delete(olmosAppState).where(eq(olmosAppState.key, `service-media:${cleanId}`));
+    return getAllServiceMedia();
+  }
+
   const store = getMediaBlobStore();
   if (store) {
     const current = await getAllServiceMedia();
@@ -540,6 +661,13 @@ export async function deleteServiceMedia(gameId) {
 }
 
 export async function getCardSettings() {
+  const database = getDatabase();
+  if (database) {
+    const saved = await getAppStateValue('card-settings');
+    if (saved && saved.number && saved.holder) return saved;
+    return { ...PAYMENT_CARD };
+  }
+
   const store = getMediaBlobStore();
   if (store) {
     const saved = await store.get('store-card', { type: 'json' }).catch(() => null);
@@ -561,6 +689,12 @@ export async function saveCardSettings({ number, holder, bank }) {
     throw new Error('invalid_card_settings');
   }
   const next = { number: cleanNumber, holder: cleanHolder, bank: cleanBank };
+  const database = getDatabase();
+  if (database) {
+    await setAppStateValue('card-settings', next);
+    return next;
+  }
+
   const store = getMediaBlobStore();
   if (store) {
     await store.setJSON('store-card', next);
@@ -619,6 +753,30 @@ export function verifyAdminAccess({ headers = {}, initData = '', adminKey = '', 
 
 export async function checkRateLimit(key, maxRequests = 10, windowMs = 60_000) {
   const now = Date.now();
+  const database = getDatabase();
+  if (database) {
+    const rateKey = crypto.createHash('sha256').update(key).digest('hex').slice(0, 24);
+    const [record] = await database
+      .insert(olmosRateLimits)
+      .values({ rateKey, windowStartedAt: now, hits: 1 })
+      .onConflictDoUpdate({
+        target: olmosRateLimits.rateKey,
+        set: {
+          windowStartedAt: sql`CASE WHEN ${now} - ${olmosRateLimits.windowStartedAt} >= ${windowMs} THEN ${now} ELSE ${olmosRateLimits.windowStartedAt} END`,
+          hits: sql`CASE WHEN ${now} - ${olmosRateLimits.windowStartedAt} >= ${windowMs} THEN 1 ELSE ${olmosRateLimits.hits} + 1 END`,
+        },
+      })
+      .returning({ windowStartedAt: olmosRateLimits.windowStartedAt, hits: olmosRateLimits.hits });
+
+    if (record.hits > maxRequests) {
+      return {
+        allowed: false,
+        retryAfterSec: Math.max(1, Math.ceil((windowMs - (now - record.windowStartedAt)) / 1000)),
+      };
+    }
+    return { allowed: true, remaining: maxRequests - record.hits };
+  }
+
   const store = getOrdersBlobStore();
 
   if (store) {
@@ -733,4 +891,47 @@ export async function telegramApi(method, payload, isMultipart = false) {
     body: isMultipart ? payload : JSON.stringify(payload),
   });
   return res.json().catch(() => ({ ok: false, description: 'Invalid Telegram response' }));
+}
+
+export async function ensureTelegramWebhook() {
+  if (process.env.VERCEL_ENV !== 'production' || !process.env.TG_BOT_TOKEN) {
+    return { ok: false, skipped: true };
+  }
+  if (Date.now() - telegramWebhookConfiguredAt < 5 * 60_000) {
+    return { ok: true, cached: true };
+  }
+
+  const host =
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+    process.env.APP_URL ||
+    process.env.URL ||
+    '';
+  if (!host) return { ok: false, error: 'Production URL is not configured' };
+
+  let baseUrl;
+  try {
+    const parsed = new URL(host.startsWith('http') ? host : `https://${host}`);
+    if (parsed.protocol !== 'https:') return { ok: false, error: 'Telegram webhook requires HTTPS' };
+    baseUrl = parsed.origin;
+  } catch {
+    return { ok: false, error: 'Production URL is invalid' };
+  }
+
+  const url = `${baseUrl}/.netlify/functions/tg-webhook`;
+  const info = await telegramApi('getWebhookInfo', {});
+  if (info?.ok && info.result?.url === url) {
+    telegramWebhookConfiguredAt = Date.now();
+    return { ok: true, url };
+  }
+
+  const result = await telegramApi('setWebhook', {
+    url,
+    secret_token: getTelegramWebhookSecret(),
+    allowed_updates: ['message', 'callback_query'],
+  });
+  if (!result?.ok) {
+    return { ok: false, error: result?.description || 'Telegram webhook setup failed' };
+  }
+  telegramWebhookConfiguredAt = Date.now();
+  return { ok: true, url };
 }

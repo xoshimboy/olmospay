@@ -1,6 +1,7 @@
 import { CATALOG } from './_catalog-map.js';
 import {
   creditOrderCoins,
+  ensureTelegramWebhook,
   escapeHtml,
   getCardSettings,
   getCorsHeaders,
@@ -72,6 +73,7 @@ export async function handler(event) {
       soraRequest('/services', { method: 'GET', useCache: true }),
       process.env.TG_BOT_TOKEN ? telegramApi('getMe', {}) : Promise.resolve(null),
     ]);
+    const webhook = await ensureTelegramWebhook();
 
     let completedOrders = 0;
     let pendingOrders = 0;
@@ -127,6 +129,7 @@ export async function handler(event) {
           configured: Boolean(process.env.TG_BOT_TOKEN),
           adminIdSet: Boolean(process.env.TG_ADMIN_ID),
           username: tgMe?.ok && tgMe.result?.username ? tgMe.result.username : null,
+          webhookConfigured: Boolean(webhook.ok),
         },
       },
       origin

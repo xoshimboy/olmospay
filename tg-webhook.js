@@ -4,6 +4,7 @@ import {
   escapeHtml,
   getOrder,
   getUserCoins,
+  getTelegramWebhookSecret,
   inferSoraTypeByService,
   jsonResponse,
   parseOrdLine,
@@ -17,7 +18,7 @@ const LOW_BALANCE_THRESHOLD_UZS = 100_000;
 const activePollers = new Set();
 
 function verifyWebhookSecret(headers = {}) {
-  const expected = process.env.TG_WEBHOOK_SECRET;
+  const expected = getTelegramWebhookSecret();
   if (!expected) return false;
   const normalized = Object.fromEntries(
     Object.entries(headers).map(([k, v]) => [k.toLowerCase(), String(v || '')])

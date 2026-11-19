@@ -1,5 +1,5 @@
 export const MAX_FILE_MB = 10;
-export const MAX_SERVER_BYTES = 4 * 1024 * 1024;
+export const MAX_SERVER_BYTES = 3 * 1024 * 1024;
 export const CHECKOUT_SECONDS = 300; // 5 minutes
 
 export function formatUzs(amount: number, unit = 'so‘m'): string {
@@ -147,6 +147,9 @@ async function resizeImageToJpeg(file: File, maxSide: number, maxBytes: number, 
   while (out.length * 0.75 > maxBytes && quality > 0.45) {
     quality -= 0.1;
     out = canvas.toDataURL('image/jpeg', quality);
+  }
+  if (out.length * 0.75 > maxBytes) {
+    throw new Error('FILE_TOO_LARGE');
   }
   return out;
 }

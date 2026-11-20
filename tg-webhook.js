@@ -11,6 +11,7 @@ import {
   signAdminSessionToken,
   soraRequest,
   telegramApi,
+  rememberTelegramCustomer,
   updateOrder,
 } from './_lib.js';
 
@@ -421,6 +422,7 @@ export async function processTelegramUpdate(update) {
     const webAppUrl = getMiniAppHttpsUrl();
 
     if (text === '/start' || text.startsWith('/start ') || text.startsWith('/start@') || text === '/help' || text === '/menu') {
+      await rememberTelegramCustomer(fromUser);
       const firstName = escapeHtml(fromUser?.first_name || 'Do‘st');
       const coinState = fromUser?.id ? await getUserCoins(fromUser.id) : { balance: 0 };
       const lines = [

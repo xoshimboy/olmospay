@@ -15,8 +15,10 @@ const memoryOrders = new Map();
 const memoryAllOrderRefs = [];
 const memoryUserOrders = new Map();
 const memoryUserCoins = new Map();
+const memoryTelegramCustomers = new Map();
 const memoryRateLimits = new Map();
 const memoryServiceMedia = new Map();
+const memoryAdminMessageLogs = [];
 let memoryCardSettings = null;
 const soraCache = new Map();
 let telegramWebhookConfiguredAt = 0;
@@ -493,6 +495,76 @@ export async function listAllOrders(limit = 60) {
   }
   const orders = await Promise.all(refs.slice(0, limit).map((ref) => getOrder(ref)));
   return orders.filter(Boolean);
+}
+
+export async function rememberTelegramCustomer(user) {
+  const id = String(user?.id || '').trim();
+  if (!/^\d{1,20}$/.test(id)) return null;
+
+  const customer = {
+    id,
+    username: String(user?.username || '').trim().slice(0, 64),
+    firstName: String(user?.first_name || '').trim().slice(0, 64),
+    lastName: String(user?.last_name || '').trim().slice(0, 64),
+  };
+  const database = getDatabase();
+  if (database) {
+    await setAppStateValue(`telegram-customer:${id}`, customer);
+  } else {
+    memoryTelegramCustomers.set(id, customer);
+  }
+  return customer;
+}
+
+export async function listTelegramCustomerIds() {
+  const database = getDatabase();
+  if (database) {
+    const [orderRows, customerRows] = await Promise.all([
+      database
+        .selectDistinct({ tgUserId: olmosOrders.tgUserId })
+        .from(olmosOrders)
+        .where(sql`${olmosOrders.tgUserId} is not null and ${olmosOrders.tgUserId} <> ''`),
+      database.select({ key: olmosAppState.key }).from(olmosAppState).where(like(olmosAppState.key, 'telegram-customer:%')),
+    ]);
+    const orderIds = orderRows.map((row) => String(row.tgUserId || '').trim());
+    const registeredIds = customerRows.map(({ key }) => key.slice('telegram-customer:'.length));
+    return [...new Set([...orderIds, ...registeredIds].filter(Boolean))];
+  }
+
+  const orders = await listAllOrders(10000);
+  const orderIds = orders.map((order) => String(order.tgUserId || '').trim());
+  return [...new Set([...memoryTelegramCustomers.keys(), ...orderIds].filter(Boolean))];
+}
+
+export async function getAdminMessageLogs(limit = 20) {
+  const database = getDatabase();
+  const stored = database ? await getAppStateValue('admin-message-logs') : memoryAdminMessageLogs;
+  const safeLimit = Math.max(1, Math.min(50, Number(limit) || 20));
+  return Array.isArray(stored) ? stored.slice(0, safeLimit) : [];
+}
+
+export async function recordAdminMessageLog(entry) {
+  const log = {
+    id: crypto.randomUUID(),
+    createdAt: Date.now(),
+    target: ['broadcast', 'admin', 'custom'].includes(String(entry.target)) ? String(entry.target) : 'admin',
+    preview: String(entry.preview || '').slice(0, 220),
+    totalTargets: Math.max(0, Number(entry.totalTargets) || 0),
+    sentCount: Math.max(0, Number(entry.sentCount) || 0),
+    failedCount: Math.max(0, Number(entry.failedCount) || 0),
+    status: ['sent', 'partial', 'failed'].includes(String(entry.status)) ? String(entry.status) : 'failed',
+  };
+  const database = getDatabase();
+  const previous = database ? await getAdminMessageLogs(50) : memoryAdminMessageLogs;
+  const logs = [log, ...previous].slice(0, 50);
+
+  if (database) {
+    await setAppStateValue('admin-message-logs', logs);
+  } else {
+    memoryAdminMessageLogs.splice(0, memoryAdminMessageLogs.length, ...logs);
+  }
+
+  return logs;
 }
 
 export async function getUserCoins(tgUserId) {

@@ -275,8 +275,8 @@ export function CheckoutPage({
           <ShieldCheck size={20} className="text-[var(--gold-2)] dark:text-[#E5B94C] shrink-0" />
         </div>
 
-        <div className="flex items-center justify-between gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-3.5 sm:px-4 py-3">
-          <span className="font-mono-num text-sm sm:text-lg font-semibold tracking-wider text-[var(--ink)] whitespace-nowrap">
+        <div className="flex flex-col gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-3.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:px-4 py-3">
+          <span className="font-mono-num text-base sm:text-lg font-semibold tracking-wider text-[var(--ink)] whitespace-nowrap">
             {cardInfo.number}
           </span>
           <button

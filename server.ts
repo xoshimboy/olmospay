@@ -13,6 +13,7 @@ import { handler as userCoinsHandler } from './user-coins.js';
 import { soraRequest, telegramApi, verifyAdminAccess } from './_lib.js';
 import { buildProjectZipBuffer } from './_zip.js';
 
+dotenv.config({ path: '.env.development.local' });
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

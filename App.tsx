@@ -801,6 +801,59 @@ export default function App() {
               </div>
             </div>
 
+            {/* Put player details before the package grid so the game ID stays visible on mobile. */}
+            <section aria-labelledby="recipient-id-title" className="ios-glass-card scroll-mt-24 rounded-[22px] border border-[#007AFF]/20 p-5 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <h2 id="recipient-id-title" className="font-display text-base font-bold text-[var(--ink)]">{t.enterDetails}</h2>
+                <span className="rounded-full bg-[#007AFF]/10 px-2.5 py-1 text-[10px] font-bold tracking-wide text-[#007AFF] dark:bg-[#E5B94C]/15 dark:text-[#E5B94C]">1-QADAM</span>
+              </div>
+              <p className="text-xs text-[var(--ink-muted)]">O‘yin ID raqamini paket tanlashdan oldin kiriting.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className={selectedGame.requiresServer ? '' : 'sm:col-span-2'}>
+                  <label htmlFor="player-id-input" className="block text-xs font-semibold text-[var(--ink)] mb-1.5">
+                    {selectedGame.inputLabel[lang] || selectedGame.inputLabel.uz}
+                  </label>
+                  <input
+                    id="player-id-input"
+                    type={selectedGame.inputType === 'url' ? 'url' : 'text'}
+                    value={playerID}
+                    onChange={(e) => {
+                      setPlayerID(e.target.value);
+                      setGameFormError('');
+                    }}
+                    placeholder={selectedGame.inputPlaceholder}
+                    autoComplete="off"
+                    className="w-full min-h-[56px] rounded-xl border border-[#007AFF]/30 bg-[var(--surface)] px-4 text-base sm:text-lg font-mono-num font-semibold text-[var(--ink)] placeholder:text-[var(--ink-muted)]/70 focus:outline-none focus:ring-2 focus:ring-[#007AFF]/25 focus:border-[#007AFF] dark:focus:border-[#E5B94C]"
+                  />
+                </div>
+                {selectedGame.requiresServer && (
+                  <div>
+                    <label htmlFor="server-id-input" className="block text-xs font-semibold text-[var(--ink)] mb-1.5">
+                      {selectedGame.serverLabel?.[lang] || 'Server ID'}
+                    </label>
+                    <input
+                      id="server-id-input"
+                      type="text"
+                      value={serverID}
+                      onChange={(e) => {
+                        setServerID(e.target.value);
+                        setGameFormError('');
+                      }}
+                      placeholder={selectedGame.serverPlaceholder || '1234'}
+                      autoComplete="off"
+                      className="w-full min-h-[56px] rounded-xl border border-[#007AFF]/30 bg-[var(--surface)] px-4 text-base sm:text-lg font-mono-num font-semibold text-[var(--ink)] placeholder:text-[var(--ink-muted)]/70 focus:outline-none focus:ring-2 focus:ring-[#007AFF]/25 focus:border-[#007AFF] dark:focus:border-[#E5B94C]"
+                    />
+                  </div>
+                )}
+              </div>
+              {gameFormError && (
+                <div role="alert" className="rounded-xl border border-red-500/35 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-300 flex items-start gap-2">
+                  <AlertCircle size={18} className="shrink-0 mt-0.5" />
+                  <span>{gameFormError}</span>
+                </div>
+              )}
+            </section>
+
             <section aria-labelledby="pkg-grid-title" className="space-y-3">
               <h2 id="pkg-grid-title" className="font-display text-base font-bold text-[var(--ink)]">
                 {t.selectPackage}
@@ -872,63 +925,6 @@ export default function App() {
               </div>
             </section>
 
-            {/* Recipient ID / Username / Link Form */}
-            <section className="ios-glass-card rounded-[22px] p-5 space-y-4">
-              <h2 className="font-display text-base font-bold text-[var(--ink)]">{t.enterDetails}</h2>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className={selectedGame.requiresServer ? '' : 'sm:col-span-2'}>
-                  <label htmlFor="player-id-input" className="block text-xs font-medium text-[var(--ink-muted)] mb-1.5">
-                    {selectedGame.inputLabel[lang] || selectedGame.inputLabel.uz}
-                  </label>
-                  <input
-                    id="player-id-input"
-                    type={selectedGame.inputType === 'url' ? 'url' : 'text'}
-                    value={playerID}
-                    onChange={(e) => {
-                      setPlayerID(e.target.value);
-                      setGameFormError('');
-                    }}
-                    placeholder={selectedGame.inputPlaceholder}
-                    autoComplete="off"
-                    className="w-full min-h-[46px] rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-3.5 text-sm font-mono-num text-[var(--ink)] placeholder:text-[var(--ink-muted)]/60 focus:outline-none focus:border-[#007AFF] dark:focus:border-[#E5B94C]"
-                  />
-                </div>
-
-                {selectedGame.requiresServer && (
-                  <div>
-                    <label
-                      htmlFor="server-id-input"
-                      className="block text-xs font-medium text-[var(--ink-muted)] mb-1.5"
-                    >
-                      {selectedGame.serverLabel?.[lang] || 'Server ID'}
-                    </label>
-                    <input
-                      id="server-id-input"
-                      type="text"
-                      value={serverID}
-                      onChange={(e) => {
-                        setServerID(e.target.value);
-                        setGameFormError('');
-                      }}
-                      placeholder={selectedGame.serverPlaceholder || '1234'}
-                      autoComplete="off"
-                      className="w-full min-h-[46px] rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-3.5 text-sm font-mono-num text-[var(--ink)] placeholder:text-[var(--ink-muted)]/60 focus:outline-none focus:border-[#007AFF] dark:focus:border-[#E5B94C]"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {gameFormError && (
-                <div
-                  role="alert"
-                  className="rounded-xl border border-red-500/35 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-300 flex items-start gap-2"
-                >
-                  <AlertCircle size={18} className="shrink-0 mt-0.5" />
-                  <span>{gameFormError}</span>
-                </div>
-              )}
-            </section>
 
             {/* Sticky Purchase Bar */}
             <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-[var(--line)] bg-[var(--surface)]/95 backdrop-blur-md px-4 py-3 pb-safe md:static md:rounded-2xl md:border md:p-5">

@@ -6,8 +6,11 @@ import {
   getCardSettings,
   getCorsHeaders,
   getOrder,
+  getAdminMessageLogs,
   jsonResponse,
   listAllOrders,
+  listTelegramCustomerIds,
+  recordAdminMessageLog,
   saveCardSettings,
   soraRequest,
   telegramApi,
@@ -66,12 +69,14 @@ export async function handler(event) {
   }
 
   if (event.httpMethod === 'GET') {
-    const [orders, card, soraMe, soraSvc, tgMe] = await Promise.all([
+    const [orders, card, soraMe, soraSvc, tgMe, customerIds, messageLogs] = await Promise.all([
       listAllOrders(60),
       getCardSettings(),
       soraRequest('/me', { method: 'GET' }),
       soraRequest('/services', { method: 'GET', useCache: true }),
       process.env.TG_BOT_TOKEN ? telegramApi('getMe', {}) : Promise.resolve(null),
+      listTelegramCustomerIds(),
+      getAdminMessageLogs(30),
     ]);
     const webhook = await ensureTelegramWebhook();
 
@@ -80,7 +85,6 @@ export async function handler(event) {
     let processingOrders = 0;
     let canceledOrders = 0;
     let totalRevenueUzs = 0;
-    const customerSet = new Set();
 
     for (const o of orders) {
       if (o.status === 'completed') {
@@ -93,8 +97,6 @@ export async function handler(event) {
       } else {
         pendingOrders += 1;
       }
-      if (o.tgUserId) customerSet.add(String(o.tgUserId));
-      else if (o.playerId) customerSet.add(`p:${o.playerId}`);
     }
 
     return jsonResponse(
@@ -109,10 +111,11 @@ export async function handler(event) {
           processingOrders,
           canceledOrders,
           totalRevenueUzs,
-          uniqueCustomers: customerSet.size,
+          uniqueCustomers: customerIds.length,
           storeServicesCount: CATALOG.length,
         },
         orders,
+        messageLogs,
         card,
         sora: {
           ok: soraMe.ok,
@@ -127,6 +130,8 @@ export async function handler(event) {
         },
         bot: {
           configured: Boolean(process.env.TG_BOT_TOKEN),
+          connected: Boolean(tgMe?.ok),
+          error: tgMe?.ok ? null : tgMe?.description || (process.env.TG_BOT_TOKEN ? 'Telegram bot bilan aloqa yo‘q' : 'TG_BOT_TOKEN sozlanmagan'),
           adminIdSet: Boolean(process.env.TG_ADMIN_ID),
           username: tgMe?.ok && tgMe.result?.username ? tgMe.result.username : null,
           webhookConfigured: Boolean(webhook.ok),
@@ -154,6 +159,7 @@ export async function handler(event) {
 
     if (action === 'send-message') {
       const target = String(body.target || '').trim();
+      const targetType = String(body.targetType || target).trim();
       const text = String(body.text || '').trim();
       if (!text || text.length > 3500) {
         return jsonResponse(400, { ok: false, error: 'Xabar matni 1–3500 belgi bo‘lishi kerak' }, origin);
@@ -162,37 +168,85 @@ export async function handler(event) {
         return jsonResponse(503, { ok: false, error: 'TG_BOT_TOKEN sozlanmagan' }, origin);
       }
 
-      if (target === 'broadcast') {
-        const orders = await listAllOrders(100);
-        const ids = [...new Set(orders.map((o) => o.tgUserId).filter(Boolean))];
+      const botCheck = await telegramApi('getMe', {});
+      if (!botCheck?.ok) {
+        return jsonResponse(503, { ok: false, error: botCheck?.description || 'Telegram bot tokeni ishlamayapti' }, origin);
+      }
+
+      if (targetType === 'broadcast') {
+        const ids = await listTelegramCustomerIds();
         if (ids.length === 0) {
           return jsonResponse(400, { ok: false, error: 'Hali Telegram orqali buyurtma bergan mijozlar yo‘q' }, origin);
         }
         let sentCount = 0;
+        let failedCount = 0;
         for (const uid of ids) {
-          const r = await telegramApi('sendMessage', {
-            chat_id: uid,
-            text: escapeHtml(text),
-            parse_mode: 'HTML',
-          });
-          if (r?.ok) sentCount += 1;
+          try {
+            const result = await telegramApi('sendMessage', {
+              chat_id: uid,
+              text: escapeHtml(text),
+              parse_mode: 'HTML',
+            });
+            if (result?.ok) sentCount += 1;
+            else failedCount += 1;
+          } catch {
+            failedCount += 1;
+          }
         }
-        return jsonResponse(200, { ok: true, sentCount, totalTargets: ids.length }, origin);
+        const status = failedCount === 0 ? 'sent' : sentCount > 0 ? 'partial' : 'failed';
+        const messageLogs = await recordAdminMessageLog({
+          target: 'broadcast',
+          preview: text,
+          totalTargets: ids.length,
+          sentCount,
+          failedCount,
+          status,
+        });
+        return jsonResponse(
+          sentCount > 0 ? 200 : 502,
+          {
+            ok: sentCount > 0,
+            sentCount,
+            failedCount,
+            totalTargets: ids.length,
+            messageLogs,
+            error: sentCount === 0 ? 'Xabar hech bir mijozga yetkazilmadi.' : undefined,
+          },
+          origin
+        );
       }
 
-      const chatId = target === 'admin' || !target ? String(process.env.TG_ADMIN_ID || '').trim() : target;
+      const chatId = targetType === 'admin' || !targetType ? String(process.env.TG_ADMIN_ID || '').trim() : target;
       if (!/^-?\d{5,20}$/.test(chatId)) {
         return jsonResponse(400, { ok: false, error: 'Telegram Chat ID noto‘g‘ri' }, origin);
       }
-      const res = await telegramApi('sendMessage', {
-        chat_id: chatId,
-        text: escapeHtml(text),
-        parse_mode: 'HTML',
-      });
-      if (!res?.ok) {
-        return jsonResponse(502, { ok: false, error: res?.description || 'Telegram xabar yuborilmadi' }, origin);
+      let result;
+      try {
+        result = await telegramApi('sendMessage', {
+          chat_id: chatId,
+          text: escapeHtml(text),
+          parse_mode: 'HTML',
+        });
+      } catch {
+        result = null;
       }
-      return jsonResponse(200, { ok: true, sentCount: 1, totalTargets: 1 }, origin);
+      const sentCount = result?.ok ? 1 : 0;
+      const messageLogs = await recordAdminMessageLog({
+        target: targetType === 'custom' ? 'custom' : 'admin',
+        preview: text,
+        totalTargets: 1,
+        sentCount,
+        failedCount: sentCount ? 0 : 1,
+        status: sentCount ? 'sent' : 'failed',
+      });
+      if (!result?.ok) {
+        return jsonResponse(502, {
+          ok: false,
+          error: result?.description || 'Telegram xabar yuborilmadi',
+          messageLogs,
+        }, origin);
+      }
+      return jsonResponse(200, { ok: true, sentCount, failedCount: 0, totalTargets: 1, messageLogs }, origin);
     }
 
     const ref = String(body.ref || '').trim();

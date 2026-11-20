@@ -6,6 +6,7 @@ import {
   Check,
   CheckCircle2,
   ChevronRight,
+  Clock3,
   CreditCard,
   Download,
   ExternalLink,
@@ -24,6 +25,7 @@ import {
   ShoppingBag,
   Store,
   Trash2,
+  Users,
   Zap,
 } from 'lucide-react';
 import { BANNER_IMAGES, CARD_INFO } from '../data/catalog';
@@ -61,6 +63,17 @@ interface AdminOrderRecord {
   updatedAt?: number;
 }
 
+interface AdminMessageLog {
+  id: string;
+  createdAt: number;
+  target: 'broadcast' | 'admin' | 'custom';
+  preview: string;
+  totalTargets: number;
+  sentCount: number;
+  failedCount: number;
+  status: 'sent' | 'partial' | 'failed';
+}
+
 interface AdminDashboardData {
   ok: boolean;
   authMode: string;
@@ -75,6 +88,7 @@ interface AdminDashboardData {
     storeServicesCount: number;
   };
   orders: AdminOrderRecord[];
+  messageLogs: AdminMessageLog[];
   card: CardInfo;
   sora: {
     ok: boolean;
@@ -89,6 +103,8 @@ interface AdminDashboardData {
   };
   bot: {
     configured: boolean;
+    connected: boolean;
+    error: string | null;
     adminIdSet: boolean;
     username: string | null;
   };
@@ -177,6 +193,7 @@ export function AdminPanelPage({
   const [msgTarget, setMsgTarget] = useState<'admin' | 'broadcast' | 'custom'>('admin');
   const [customChatId, setCustomChatId] = useState('');
   const [msgText, setMsgText] = useState('');
+  const [broadcastConfirmed, setBroadcastConfirmed] = useState(false);
   const [sendingMsg, setSendingMsg] = useState(false);
 
   const buildAuthHeaders = useCallback(
@@ -406,6 +423,7 @@ export function AdminPanelPage({
         body: JSON.stringify({
           action: 'send-message',
           target: targetValue,
+          targetType: msgTarget,
           text: msgText.trim(),
           initData,
           adminKey,
@@ -413,14 +431,20 @@ export function AdminPanelPage({
         }),
       });
       const data = await res.json().catch(() => null);
+      if (Array.isArray(data?.messageLogs)) {
+        setDashboard((current) => (current ? { ...current, messageLogs: data.messageLogs } : current));
+      }
       if (!res.ok || !data?.ok) {
         setBannerNotice({ type: 'err', text: data?.error || 'Xabar yuborib bo‘lmadi.' });
         return;
       }
       setMsgText('');
+      setBroadcastConfirmed(false);
       setBannerNotice({
-        type: 'ok',
-        text: `Xabar yuborildi (${data.sentCount || 1} ta qabul qiluvchiga).`,
+        type: data.failedCount > 0 ? 'err' : 'ok',
+        text: data.failedCount > 0
+          ? `${data.sentCount} ta yuborildi, ${data.failedCount} ta yetkazilmadi.`
+          : `Xabar yuborildi (${data.sentCount || 1} ta qabul qiluvchiga).`,
       });
     } catch {
       setBannerNotice({ type: 'err', text: t.errNetwork });
@@ -529,7 +553,7 @@ export function AdminPanelPage({
     <div className="min-h-screen bg-[#F2F2F7] text-[#1C1C1E] flex flex-col">
       {/* Apple iOS Translucent Frosted Top Navigation Bar */}
       <header className="sticky top-0 z-30 border-b border-black/[0.08] bg-white/85 backdrop-blur-xl pt-safe">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-3 sm:gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <div className="h-10 w-10 rounded-[12px] bg-[#007AFF] text-white flex items-center justify-center shrink-0 shadow-sm shadow-[#007AFF]/25">
               <ShieldCheck size={22} strokeWidth={2.1} />
@@ -550,6 +574,7 @@ export function AdminPanelPage({
                 <button
                   type="button"
                   onClick={() => handleDownloadZip('site')}
+                  aria-label="Sayt ZIP faylini yuklab olish"
                   disabled={Boolean(downloadingPart)}
                   className="min-h-[40px] px-3 rounded-full border border-black/[0.08] bg-white hover:bg-[#F2F2F7] text-[#1C1C1E] text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60"
                 >
@@ -559,6 +584,7 @@ export function AdminPanelPage({
                 <button
                   type="button"
                   onClick={() => handleDownloadZip('bot')}
+                  aria-label="Bot ZIP faylini yuklab olish"
                   disabled={Boolean(downloadingPart)}
                   className="min-h-[40px] px-3.5 rounded-full bg-[#007AFF] hover:bg-[#0066D6] text-white text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 shadow-sm"
                 >
@@ -587,6 +613,7 @@ export function AdminPanelPage({
                   window.location.href = '/';
                 }
               }}
+              aria-label="Do‘konga qaytish"
               className="min-h-[40px] px-3.5 rounded-full border border-black/[0.08] bg-white hover:bg-[#F2F2F7] text-xs font-semibold text-[#007AFF] inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
             >
               <Store size={15} />
@@ -596,7 +623,7 @@ export function AdminPanelPage({
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-5 sm:space-y-6">
         {/* Initial loading or iOS Sign-In Sheet */}
         {!dashboard ? (
           loading ? (
@@ -827,14 +854,21 @@ export function AdminPanelPage({
                       </div>
                       <span
                         className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                          dashboard.bot.configured
+                          dashboard.bot.connected
                             ? 'bg-[#34C759]/14 text-[#1F8B4D]'
                             : 'bg-[#FF3B30]/12 text-[#D70015]'
                         }`}
                       >
-                        {dashboard.bot.configured ? 'Sozlangan' : 'Token yo‘q'}
+                        {dashboard.bot.connected ? 'Ulangan · Faol' : dashboard.bot.configured ? 'Token xatosi' : 'Token yo‘q'}
                       </span>
                     </div>
+
+                    {!dashboard.bot.connected && (
+                      <div role="status" className="flex items-start gap-2 rounded-2xl border border-[#FF3B30]/20 bg-[#FF3B30]/8 px-4 py-3 text-xs text-[#D70015]">
+                        <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                        <span>{dashboard.bot.error || 'Bot tokenini tekshiring.'}</span>
+                      </div>
+                    )}
 
                     <div className="rounded-2xl bg-[#F2F2F7] divide-y divide-black/[0.06] text-sm overflow-hidden">
                       <div className="flex items-center justify-between gap-4 px-4 py-3">
@@ -1362,80 +1396,170 @@ export function AdminPanelPage({
 
             {/* TAB 5: XABAR */}
             {activeTab === 'message' && (
-              <form onSubmit={handleSendMessage} className="max-w-2xl space-y-5">
-                <div>
-                  <h2 className="font-display text-2xl font-bold text-[#1C1C1E]">Telegram xabar yuborish</h2>
-                  <p className="mt-1 text-sm text-[#6C6C70]">
-                    Olmos Pay boti orqali adminga test xabar, barcha buyurtmachilarga yoki aniq ID ga xabar yuboring.
-                  </p>
-                </div>
-
-                <div className="rounded-[22px] border border-black/[0.05] bg-white p-5 space-y-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-                  <div className="space-y-2">
-                    <span className="block text-xs font-medium text-[#6C6C70]">Qabul qiluvchi</span>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 p-1 rounded-2xl bg-[#E5E5EA]/85">
-                      {(
-                        [
-                          ['admin', 'Admin (Test)'],
-                          ['broadcast', 'Barcha mijozlar'],
-                          ['custom', 'Aniq Chat ID'],
-                        ] as const
-                      ).map(([mode, label]) => (
-                        <button
-                          key={mode}
-                          type="button"
-                          onClick={() => setMsgTarget(mode)}
-                          className={`min-h-[40px] px-3 rounded-xl text-xs font-semibold cursor-pointer transition-all ${
-                            msgTarget === mode
-                              ? 'bg-white text-[#007AFF] shadow-xs'
-                              : 'text-[#6C6C70] hover:text-[#1C1C1E]'
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
+              <form
+                onSubmit={handleSendMessage}
+                className="grid max-w-none grid-cols-1 gap-5 items-start xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]"
+              >
+                <div className="space-y-5">
+                  <div>
+                    <h2 className="font-display text-2xl font-bold text-[#1C1C1E]">Telegram xabarlar</h2>
+                    <p className="mt-1 text-sm text-[#6C6C70]">
+                      Olmos Pay boti orqali admin, aniq mijoz yoki barcha Telegram mijozlariga xabar yuboring.
+                    </p>
                   </div>
 
-                  {msgTarget === 'custom' && (
-                    <div>
-                      <label htmlFor="custom-chat-id" className="block text-xs font-medium text-[#6C6C70] mb-1.5">
-                        Telegram Chat ID
-                      </label>
-                      <input
-                        id="custom-chat-id"
-                        type="text"
-                        value={customChatId}
-                        onChange={(e) => setCustomChatId(e.target.value)}
-                        placeholder="Masalan: 123456789"
-                        className="w-full min-h-[44px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 text-sm font-mono-num text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]"
-                      />
+                  {!dashboard.bot.connected && (
+                    <div role="status" className="flex items-start gap-2.5 rounded-2xl border border-[#FF3B30]/25 bg-[#FF3B30]/8 px-4 py-3 text-sm text-[#D70015]">
+                      <AlertCircle size={18} className="mt-0.5 shrink-0" />
+                      <span>{dashboard.bot.error || 'Telegram bot ulanmagan. Token va bot holatini tekshiring.'}</span>
                     </div>
                   )}
 
-                  <div>
-                    <label htmlFor="admin-msg-text" className="block text-xs font-medium text-[#6C6C70] mb-1.5">
-                      Xabar matni
-                    </label>
-                    <textarea
-                      id="admin-msg-text"
-                      rows={5}
-                      value={msgText}
-                      onChange={(e) => setMsgText(e.target.value)}
-                      placeholder="Aksiya yoki muhim xabar matnini yozing..."
-                      className="w-full rounded-[16px] border border-black/[0.08] bg-[#F2F2F7] p-3.5 text-sm text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]"
-                    />
+                  <div className="rounded-[22px] border border-black/[0.05] bg-white p-5 space-y-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                    <div className="space-y-2">
+                      <span className="block text-xs font-medium text-[#6C6C70]">Qabul qiluvchi</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 p-1 rounded-2xl bg-[#E5E5EA]/85">
+                        {(
+                          [
+                            ['admin', 'Admin (Test)'],
+                            ['broadcast', 'Barcha mijozlar'],
+                            ['custom', 'Aniq Chat ID'],
+                          ] as const
+                        ).map(([mode, label]) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => {
+                              setMsgTarget(mode);
+                              setBroadcastConfirmed(false);
+                            }}
+                            aria-pressed={msgTarget === mode}
+                            className={`min-h-[44px] px-3 rounded-xl text-xs font-semibold cursor-pointer transition-all ${
+                              msgTarget === mode
+                                ? 'bg-white text-[#007AFF] shadow-xs'
+                                : 'text-[#6C6C70] hover:text-[#1C1C1E]'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {msgTarget === 'broadcast' && (
+                      <div className="space-y-3 rounded-2xl border border-[#007AFF]/15 bg-[#007AFF]/[0.04] p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#007AFF]/10 text-[#007AFF]">
+                            <Users size={19} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-[#1C1C1E]">{dashboard.stats.uniqueCustomers} ta Telegram mijoz</p>
+                            <p className="text-xs text-[#6C6C70]">Xabar buyurtma bergan noyob mijozlarga yuboriladi.</p>
+                          </div>
+                        </div>
+                        <label className="flex items-start gap-2.5 text-sm text-[#1C1C1E]">
+                          <input
+                            type="checkbox"
+                            checked={broadcastConfirmed}
+                            onChange={(event) => setBroadcastConfirmed(event.target.checked)}
+                            className="mt-0.5 h-4 w-4 accent-[#007AFF]"
+                          />
+                          <span>Barcha mijozlarga yuborishni tasdiqlayman.</span>
+                        </label>
+                      </div>
+                    )}
+
+                    {msgTarget === 'custom' && (
+                      <div>
+                        <label htmlFor="custom-chat-id" className="block text-xs font-medium text-[#6C6C70] mb-1.5">
+                          Telegram Chat ID
+                        </label>
+                        <input
+                          id="custom-chat-id"
+                          type="text"
+                          value={customChatId}
+                          onChange={(e) => setCustomChatId(e.target.value)}
+                          placeholder="Masalan: 123456789"
+                          className="w-full min-h-[48px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 text-sm font-mono-num text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]"
+                        />
+                      </div>
+                    )}
+
+                    <div>
+                      <label htmlFor="admin-msg-text" className="block text-xs font-medium text-[#6C6C70] mb-1.5">
+                        Xabar matni
+                      </label>
+                      <textarea
+                        id="admin-msg-text"
+                        rows={7}
+                        maxLength={3500}
+                        value={msgText}
+                        onChange={(e) => setMsgText(e.target.value)}
+                        placeholder="Aksiya yoki muhim xabar matnini yozing..."
+                        className="w-full min-h-[190px] rounded-[16px] border border-black/[0.08] bg-[#F2F2F7] p-3.5 text-sm text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]"
+                      />
+                      <p className="mt-1.5 text-right text-xs text-[#8E8E93]">{msgText.length}/3500</p>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={sendingMsg || !msgText.trim() || !dashboard.bot.connected || (msgTarget === 'broadcast' && !broadcastConfirmed)}
+                      className="min-h-[48px] w-full sm:w-auto px-6 rounded-full bg-[#007AFF] hover:bg-[#0066D6] disabled:opacity-50 text-white font-semibold text-sm inline-flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                    >
+                      {sendingMsg ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                      <span>{sendingMsg ? 'Yuborilmoqda...' : 'Xabarni yuborish'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <aside aria-labelledby="message-history-title" className="rounded-[22px] border border-black/[0.05] bg-white p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#007AFF]/10 text-[#007AFF]">
+                        <Clock3 size={19} />
+                      </div>
+                      <div>
+                        <h3 id="message-history-title" className="font-display text-lg font-bold text-[#1C1C1E]">Xabarlar tarixi</h3>
+                        <p className="text-xs text-[#6C6C70]">So‘nggi yuborishlar va natijalar</p>
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-[#F2F2F7] px-2.5 py-1 text-xs font-semibold text-[#6C6C70]">
+                      {(dashboard.messageLogs || []).length}
+                    </span>
                   </div>
 
-                  <button
-                    type="submit"
-                    disabled={sendingMsg || !msgText.trim()}
-                    className="min-h-[46px] px-6 rounded-full bg-[#007AFF] hover:bg-[#0066D6] disabled:opacity-50 text-white font-semibold text-sm inline-flex items-center gap-2 cursor-pointer shadow-sm"
-                  >
-                    {sendingMsg ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                    <span>Yuborish</span>
-                  </button>
-                </div>
+                  <div className="max-h-[720px] min-h-[420px] space-y-3 overflow-y-auto pr-1 sm:min-h-[520px]">
+                    {(dashboard.messageLogs || []).length === 0 ? (
+                      <div className="flex min-h-[400px] flex-col items-center justify-center rounded-2xl border border-dashed border-black/10 bg-[#F8F9FC] px-6 text-center">
+                        <Send size={24} className="text-[#8E8E93]" />
+                        <p className="mt-3 text-sm font-semibold text-[#1C1C1E]">Hali xabar yuborilmagan</p>
+                        <p className="mt-1 text-xs text-[#6C6C70]">Yuborilgan xabarlar natijasi shu yerda saqlanadi.</p>
+                      </div>
+                    ) : (
+                      (dashboard.messageLogs || []).map((log) => (
+                        <article key={log.id} className="rounded-2xl border border-black/[0.06] bg-[#F8F9FC] p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-[#1C1C1E]">
+                                {log.target === 'broadcast' ? 'Barcha mijozlar' : log.target === 'custom' ? 'Aniq mijoz' : 'Admin (test)'}
+                              </p>
+                              <p className="mt-0.5 text-[11px] text-[#8E8E93]">{new Date(log.createdAt).toLocaleString('uz-UZ')}</p>
+                            </div>
+                            <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${log.status === 'sent' ? 'bg-[#34C759]/14 text-[#1F8B4D]' : log.status === 'partial' ? 'bg-[#FF9500]/14 text-[#A65F00]' : 'bg-[#FF3B30]/12 text-[#D70015]'}`}>
+                              {log.status === 'sent' ? 'Yuborildi' : log.status === 'partial' ? 'Qisman' : 'Xato'}
+                            </span>
+                          </div>
+                          <p className="mt-3 whitespace-pre-wrap break-words text-sm text-[#3A3A3C]">{log.preview}</p>
+                          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-black/[0.06] pt-3 text-xs text-[#6C6C70]">
+                            <span>Yuborildi: <strong className="text-[#1F8B4D]">{log.sentCount}</strong></span>
+                            <span>Yetkazilmadi: <strong className="text-[#D70015]">{log.failedCount}</strong></span>
+                            <span>Jami: <strong className="text-[#1C1C1E]">{log.totalTargets}</strong></span>
+                          </div>
+                        </article>
+                      ))
+                    )}
+                  </div>
+                </aside>
               </form>
             )}
 
@@ -1460,11 +1584,15 @@ export function AdminPanelPage({
                     <input
                       id="card-num-input"
                       type="text"
+                      inputMode="numeric"
+                      autoComplete="cc-number"
+                      maxLength={24}
                       value={cardNumber}
                       onChange={(e) => setCardNumber(e.target.value)}
                       placeholder="9860 0000 0000 0000"
-                      className="w-full min-h-[44px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 text-sm font-mono-num text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]"
+                      className="w-full min-h-[48px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 text-base font-mono-num text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]"
                     />
+                    <p className="mt-2 text-xs text-[#6C6C70]">Saqlangandan so‘ng karta raqami mijozlarning to‘lov oynasida avtomatik ko‘rinadi.</p>
                   </div>
 
                   <div>

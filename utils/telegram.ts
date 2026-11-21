@@ -11,7 +11,6 @@ export function initTelegramApp(): { user: TgUser | null; initData: string; pref
     return { user: null, initData: '', preferredTheme: null };
   }
   try {
-    tg.ready?.();
     tg.expand?.();
   } catch {
     // Ignore outside Telegram client
@@ -21,6 +20,14 @@ export function initTelegramApp(): { user: TgUser | null; initData: string; pref
     initData: tg.initData || '',
     preferredTheme: tg.colorScheme === 'light' ? 'light' : tg.colorScheme === 'dark' ? 'dark' : null,
   };
+}
+
+export function readyTelegramApp(): void {
+  try {
+    getTg()?.ready?.();
+  } catch {
+    // Ignore outside Telegram client
+  }
 }
 
 export function triggerHaptic(kind: 'light' | 'medium' | 'success' | 'error' = 'light'): void {

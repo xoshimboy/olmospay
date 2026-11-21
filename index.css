@@ -53,6 +53,140 @@ body {
   padding-top: max(0.5rem, env(safe-area-inset-top));
 }
 
+.ios-bottom-nav {
+  left: 50%;
+  bottom: max(12px, calc(env(safe-area-inset-bottom) + 8px));
+  width: min(440px, calc(100% - 24px));
+  padding: 5px 6px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  border-radius: 28px;
+  background: rgba(250, 250, 252, 0.76);
+  box-shadow: 0 10px 34px rgba(25, 35, 55, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  backdrop-filter: blur(28px) saturate(190%);
+}
+
+.dark .ios-bottom-nav {
+  border-color: rgba(255, 255, 255, 0.13);
+  background: rgba(26, 27, 33, 0.76);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.ios-bottom-nav__item {
+  color: var(--ink-muted);
+}
+
+.ios-bottom-nav__item.is-active {
+  color: #007aff;
+  background: rgba(0, 122, 255, 0.11);
+}
+
+.dark .ios-bottom-nav__item.is-active {
+  color: #e5b94c;
+  background: rgba(229, 185, 76, 0.13);
+}
+
+.app-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--ink);
+  background: radial-gradient(ellipse at 50% 42%, rgba(0, 122, 255, 0.12), transparent 48%), var(--bg);
+  transition: opacity 420ms ease, visibility 420ms ease;
+}
+
+.app-loader--exit {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.app-loader__mark {
+  position: relative;
+  width: 74px;
+  height: 74px;
+  margin-bottom: 8px;
+  filter: drop-shadow(0 8px 18px rgba(0, 122, 255, 0.24));
+}
+
+.app-loader__flower {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: #007aff;
+  transform-origin: center;
+}
+
+.app-loader__flower--one {
+  animation: loader-flower-one 1.5s ease-in-out infinite;
+}
+
+.app-loader__flower--two {
+  fill: #36a3ff;
+  animation: loader-flower-two 1.5s ease-in-out infinite;
+  animation-delay: 180ms;
+}
+
+.app-loader__flower--three {
+  fill: #6bc9ff;
+  animation: loader-flower-three 1.5s ease-in-out infinite;
+  animation-delay: 360ms;
+}
+
+.dark .app-loader__flower {
+  fill: #e5b94c;
+}
+
+.dark .app-loader__flower--two {
+  fill: #f0cb70;
+}
+
+.dark .app-loader__flower--three {
+  fill: #f6dfa4;
+}
+
+.app-loader__label {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 750;
+  letter-spacing: -0.04em;
+}
+
+.app-loader__hint {
+  color: var(--ink-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+@keyframes loader-flower-one {
+  0% { transform: scale(0.35) translateY(-35px); opacity: 0; }
+  28% { transform: scale(0.78) translateY(-10px); opacity: 0.9; }
+  58% { transform: scale(1) translateY(0); opacity: 1; }
+  100% { transform: scale(0.3) translateY(32px); opacity: 0; }
+}
+
+@keyframes loader-flower-two {
+  0% { transform: scale(0.35) rotate(-12deg) translate(-18px, -34px); opacity: 0; }
+  28% { transform: scale(0.78) rotate(-6deg) translate(-9px, -10px); opacity: 0.9; }
+  58% { transform: scale(1) rotate(0) translate(-3px, 0); opacity: 0.9; }
+  100% { transform: scale(0.3) rotate(12deg) translate(12px, 32px); opacity: 0; }
+}
+
+@keyframes loader-flower-three {
+  0% { transform: scale(0.35) rotate(12deg) translate(18px, -34px); opacity: 0; }
+  28% { transform: scale(0.78) rotate(6deg) translate(9px, -10px); opacity: 0.9; }
+  58% { transform: scale(1) rotate(0) translate(3px, 0); opacity: 0.85; }
+  100% { transform: scale(0.3) rotate(-12deg) translate(-12px, 32px); opacity: 0; }
+}
+
 @keyframes ios-orb-drift-a {
   0%,
   100% {

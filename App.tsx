@@ -28,6 +28,7 @@ import type {
   Lang,
   OrderHistoryItem,
   PackItem,
+  GameRegion,
   PageId,
   ThemeMode,
   TgUser,
@@ -47,6 +48,52 @@ const CATALOG_CACHE_KEY = 'olmospay_catalog_cache_v1';
 const MEDIA_CACHE_KEY = 'olmospay_media_cache_v1';
 const CARD_CACHE_KEY = 'olmospay_card_cache_v1';
 const COINS_CACHE_KEY = 'olmospay_coins_cache_v1';
+
+const GAME_REGIONS: Array<{ id: GameRegion; label: string }> = [
+  { id: 'global', label: 'GLOBAL' },
+  { id: 'cis', label: 'RU / CIS' },
+  { id: 'br', label: 'BR' },
+  { id: 'eu', label: 'EU' },
+  { id: 'me', label: 'AE / ME' },
+];
+
+function getPackGroup(gameId: string, pack: PackItem): string {
+  if (gameId === 'pubg') {
+    if (pack.id === 'pubg_elite') return 'elite';
+    if (pack.id.startsWith('pubg_prime')) return 'prime';
+    if (pack.id.startsWith('pubg_') && pack.id !== 'pubg_60' && pack.id !== 'pubg_325' && pack.id !== 'pubg_660' && pack.id !== 'pubg_1800' && pack.id !== 'pubg_2460') return 'bundles';
+    return 'uc';
+  }
+  if (gameId === 'freefire') return pack.unit.toLowerCase() === 'pass' ? 'pass' : 'diamonds';
+  if (gameId === 'mlbb') return pack.unit.toLowerCase() === 'pass' ? 'pass' : 'diamonds';
+  if (gameId.startsWith('smm-')) {
+    if (pack.id.includes('view') || pack.id.includes('reels')) return 'views';
+    if (pack.id.includes('like')) return 'likes';
+    if (pack.id.includes('react')) return 'reactions';
+    if (pack.id.includes('comment')) return 'comments';
+    if (pack.id.includes('share')) return 'shares';
+    if (pack.id.includes('sub') || pack.id.includes('follow')) return 'followers';
+    return 'other';
+  }
+  return 'all';
+}
+
+const PACKAGE_GROUP_LABELS: Record<string, string> = {
+  all: 'Barchasi',
+  uc: 'UC',
+  elite: 'Elite Pass',
+  bundles: 'Paketlar',
+  prime: 'Prime',
+  diamonds: 'Olmoslar',
+  pass: 'Pass',
+  views: 'Ko‘rishlar',
+  likes: 'Layklar',
+  reactions: 'Reaksiyalar',
+  comments: 'Izohlar',
+  shares: 'Ulashishlar',
+  followers: 'Obunachilar',
+  other: 'Boshqa',
+};
 
 function readCacheJson<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
@@ -124,6 +171,8 @@ export default function App() {
   const [category, setCategory] = useState<GameCategory>('all');
   const [selectedGameId, setSelectedGameId] = useState<string>('pubg');
   const [selectedPackId, setSelectedPackId] = useState<string>('');
+  const [packageGroup, setPackageGroup] = useState<string>('all');
+  const [selectedRegion, setSelectedRegion] = useState<GameRegion>('global');
   const [playerID, setPlayerID] = useState<string>('');
   const [serverID, setServerID] = useState<string>('');
   const [gameFormError, setGameFormError] = useState<string>('');
@@ -133,6 +182,7 @@ export default function App() {
     pack: PackItem;
     playerID: string;
     serverID: string;
+    region: GameRegion;
   } | null>(null);
 
   const [tgUser, setTgUser] = useState<TgUser | null>(null);
@@ -382,6 +432,8 @@ export default function App() {
       const target = games.find((g) => g.id === gameId) || games[0];
       setSelectedGameId(target.id);
       setSelectedPackId(target.packs[0]?.id || '');
+      setPackageGroup(target.packs[0] ? getPackGroup(target.id, target.packs[0]) : 'all');
+      setSelectedRegion('global');
       setPlayerID('');
       setServerID('');
       setGameFormError('');
@@ -398,6 +450,11 @@ export default function App() {
   const selectedPack = useMemo(
     () => selectedGame.packs.find((p) => p.id === selectedPackId) || null,
     [selectedGame, selectedPackId]
+  );
+
+  const packageGroups = Array.from(new Set(selectedGame.packs.map((pack) => getPackGroup(selectedGame.id, pack))));
+  const visiblePacks = selectedGame.packs.filter(
+    (pack) => packageGroup === 'all' || getPackGroup(selectedGame.id, pack) === packageGroup
   );
 
   const filteredGames = useMemo(() => {
@@ -458,6 +515,7 @@ export default function App() {
       pack: selectedPack,
       playerID: check.cleanId,
       serverID: check.cleanServer,
+      region: selectedRegion,
     });
     navPage('p-checkout');
   }
@@ -854,14 +912,70 @@ export default function App() {
               )}
             </section>
 
+            {selectedGame.id === 'freefire' && (
+              <section aria-label="O‘yin regionini tanlang" className="space-y-2">
+                <h2 className="text-xs font-semibold text-[var(--ink-muted)]">REGIONNI TANLANG</h2>
+                <div role="group" aria-label="Free Fire regioni" className="flex flex-wrap gap-2">
+                  {GAME_REGIONS.map((region) => (
+                    <button
+                      key={region.id}
+                      type="button"
+                      aria-pressed={selectedRegion === region.id}
+                      onClick={() => setSelectedRegion(region.id)}
+                      className={`min-h-[44px] px-3 rounded-xl border border-[var(--line)] text-xs font-semibold cursor-pointer ${
+                        selectedRegion === region.id
+                          ? 'bg-[#007AFF] text-white dark:bg-[#E5B94C] dark:text-[#09090B]'
+                          : 'bg-[var(--surface)] text-[var(--ink)]'
+                      }`}
+                    >
+                      {region.label}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+
             <section aria-labelledby="pkg-grid-title" className="space-y-3">
-              <h2 id="pkg-grid-title" className="font-display text-base font-bold text-[var(--ink)]">
-                {t.selectPackage}
-              </h2>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <h2 id="pkg-grid-title" className="font-display text-base font-bold text-[var(--ink)]">
+                  {t.selectPackage}
+                </h2>
+                {packageGroups.length > 1 && (
+                  <div role="tablist" aria-label="Paket turlari" className="inline-flex items-center gap-1 p-1 rounded-xl border border-[var(--line)] bg-[var(--surface)] overflow-x-auto max-w-full">
+                    {['all', ...packageGroups].map((group) => {
+                      const active = packageGroup === group;
+                      return (
+                        <button
+                          key={group}
+                          type="button"
+                          role="tab"
+                          aria-selected={active}
+                          onClick={() => {
+                            setPackageGroup(group);
+                            const nextPack = selectedGame.packs.find(
+                              (pack) => group === 'all' || getPackGroup(selectedGame.id, pack) === group
+                            );
+                            if (nextPack) setSelectedPackId(nextPack.id);
+                            setGameFormError('');
+                          }}
+                          className={`min-h-[38px] px-3 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                            active
+                              ? 'bg-[#007AFF] text-white dark:bg-[#E5B94C] dark:text-[#09090B]'
+                              : 'text-[var(--ink-muted)] hover:text-[var(--ink)]'
+                          }`}
+                        >
+                          {PACKAGE_GROUP_LABELS[group] || group}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
-                {selectedGame.packs.map((pack) => {
+                {visiblePacks.map((pack) => {
                   const selected = selectedPackId === pack.id;
                   const packCover = customMedia[`pack:${pack.id}`];
+                  const automaticForRegion = Boolean(pack.autoDelivery) && (selectedGame.id !== 'freefire' || selectedRegion === 'global');
                   const packCoins =
                     pack.coinsReward ??
                     calculatePackCoins({
@@ -915,7 +1029,7 @@ export default function App() {
                         <span className="block text-[11px] font-mono-num font-semibold text-amber-600 dark:text-[#E5B94C]">
                           🪙 +{packCoins} {t.coinsUnit} ·{' '}
                           <span className="font-normal text-[var(--ink-muted)]">
-                            {pack.autoDelivery ? t.autoLabel : t.manualLabel}
+                            {automaticForRegion ? t.autoLabel : t.manualLabel}
                           </span>
                         </span>
                       </div>
@@ -977,6 +1091,7 @@ export default function App() {
             pack={checkoutData.pack}
             playerID={checkoutData.playerID}
             serverID={checkoutData.serverID}
+            region={checkoutData.region}
             initData={initData}
             cardInfo={cardInfo}
             onOrderCreated={(ord) => saveHistory([ord, ...sessionHistory])}

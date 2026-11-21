@@ -25,6 +25,7 @@ function serializePublicOrder(o) {
     coinsCredited: Boolean(o.coinsCreditedAt),
     playerDisplay: o.playerDisplay,
     server: o.server || '',
+    region: o.region || '',
     mapped: Boolean(o.mapped),
     refunded: Boolean(o.refunded),
     createdAt: o.createdAt,

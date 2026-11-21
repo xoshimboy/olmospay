@@ -34,6 +34,8 @@ export interface PackItem {
   autoDelivery?: boolean;
 }
 
+export type GameRegion = 'global' | 'cis' | 'br' | 'eu' | 'me';
+
 export interface GameItem {
   id: string;
   name: string;
@@ -60,6 +62,7 @@ export interface OrderHistoryItem {
   coinsReward?: number;
   playerDisplay: string;
   server?: string;
+  region?: string;
   status: OrderStatus;
   refunded?: boolean;
   createdAt: number;

@@ -72,6 +72,13 @@ export async function handler(event) {
     return jsonResponse(400, { ok: false, error: 'Tanlangan o‘yin yoki paket topilmadi' }, origin);
   }
 
+  const requestedRegion = String(body.region || 'global').trim().toLowerCase();
+  const supportedFreeFireRegions = new Set(['global', 'cis', 'br', 'eu', 'me']);
+  if (gameId === 'freefire' && !supportedFreeFireRegions.has(requestedRegion)) {
+    return jsonResponse(400, { ok: false, error: 'Free Fire regioni noto‘g‘ri' }, origin);
+  }
+  const isAutomaticRegion = gameId !== 'freefire' || requestedRegion === 'global';
+
   const clientPrice = Number(body.price);
   if (!Number.isInteger(clientPrice) || clientPrice <= 0 || clientPrice !== pack.priceUzs) {
     return jsonResponse(409, {
@@ -128,13 +135,15 @@ export async function handler(event) {
     playerId: targetCheck.value,
     playerDisplay: targetCheck.display,
     server: serverCheck.value,
-    region: pack.sora?.region || '',
+    region: gameId === 'freefire'
+      ? (isAutomaticRegion ? pack.sora?.region || '0' : requestedRegion.toUpperCase())
+      : pack.sora?.region || '',
     soraService: pack.sora?.service || '',
-    soraItem: pack.sora?.item || '',
+    soraItem: isAutomaticRegion ? pack.sora?.item || '' : '',
     soraQuantity: pack.sora?.quantity || null,
     soraType: pack.sora?.type || 'game',
     expectedSoraPrice: pack.sora?.expectedSoraPrice || null,
-    mapped: Boolean(pack.sora && pack.sora.service && (pack.sora.item || pack.sora.quantity)),
+    mapped: isAutomaticRegion && Boolean(pack.sora && pack.sora.service && (pack.sora.item || pack.sora.quantity)),
     tgUserId,
     tgUsername: tgUser?.username || '',
     tgFirstName: tgUser?.first_name || '',
@@ -183,6 +192,7 @@ export async function handler(event) {
       `<b>Summa:</b> ${pack.priceUzs.toLocaleString('uz-UZ')} so‘m (+${pack.coinsReward} tanga)`,
       `<b>Kiritilgan ID:</b> <code>${escapeHtml(targetCheck.display)}</code>`,
       serverCheck.value ? `<b>Server ID:</b> <code>${escapeHtml(serverCheck.value)}</code>` : null,
+      gameId === 'freefire' ? `<b>Region:</b> ${escapeHtml(requestedRegion.toUpperCase())}` : null,
       `<b>Mijoz:</b> ${userDisplay}`,
       '',
       autoModeNote,
@@ -227,6 +237,7 @@ export async function handler(event) {
       ref,
       orderToken,
       status: 'pending',
+      region: gameId === 'freefire' ? requestedRegion : '',
       priceUzs: pack.priceUzs,
       coinsReward: pack.coinsReward,
       mapped: orderRecord.mapped,

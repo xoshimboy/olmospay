@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, Copy, ImagePlus, Loader2, RefreshCw, ShieldCheck, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { CARD_INFO } from '../data/catalog';
 import type { I18nDict } from '../data/i18n';
-import type { CardInfo, GameItem, Lang, OrderHistoryItem, PackItem } from '../types';
+import type { CardInfo, GameItem, GameRegion, Lang, OrderHistoryItem, PackItem } from '../types';
 import {
   calculatePackCoins,
   CHECKOUT_SECONDS,
@@ -12,6 +12,14 @@ import {
 } from '../utils/format';
 import { triggerHaptic } from '../utils/telegram';
 
+const REGION_LABELS: Record<GameRegion, string> = {
+  global: 'GLOBAL',
+  cis: 'RU / CIS',
+  br: 'BR',
+  eu: 'EU',
+  me: 'AE / ME',
+};
+
 interface CheckoutPageProps {
   t: I18nDict;
   lang: Lang;
@@ -19,6 +27,7 @@ interface CheckoutPageProps {
   pack: PackItem;
   playerID: string;
   serverID: string;
+  region: GameRegion;
   initData: string;
   cardInfo?: CardInfo;
   onOrderCreated: (order: OrderHistoryItem) => void;
@@ -31,6 +40,7 @@ export function CheckoutPage({
   pack,
   playerID,
   serverID,
+  region,
   initData,
   cardInfo = CARD_INFO,
   onOrderCreated,
@@ -124,6 +134,7 @@ export function CheckoutPage({
           price: pack.priceUzs,
           playerID,
           server: serverID,
+          region,
           photo: receiptDataUrl,
           initData,
         }),
@@ -147,6 +158,7 @@ export function CheckoutPage({
         coinsReward: data.coinsReward ?? coinsReward,
         playerDisplay: playerID,
         server: serverID,
+        region,
         status: data.status || 'pending',
         createdAt: Date.now(),
       };
@@ -185,6 +197,12 @@ export function CheckoutPage({
               {serverID ? ` (${serverID})` : ''}
             </span>
           </div>
+          {game.id === 'freefire' && (
+            <div className="flex justify-between gap-4">
+              <span className="text-[var(--ink-muted)]">Region</span>
+              <span className="font-medium text-[var(--ink)]">{REGION_LABELS[region]}</span>
+            </div>
+          )}
           <div className="flex justify-between gap-4">
             <span className="text-[var(--ink-muted)]">Olmos tanga bonusi</span>
             <span className="font-mono-num font-semibold text-amber-600 dark:text-[#E5B94C]">
@@ -249,6 +267,12 @@ export function CheckoutPage({
             {serverID ? ` (${serverID})` : ''}
           </span>
         </div>
+        {game.id === 'freefire' && (
+          <div className="flex items-center justify-between gap-4 text-sm">
+            <span className="text-[var(--ink-muted)]">Region</span>
+            <span className="font-medium text-[var(--ink)]">{REGION_LABELS[region]}</span>
+          </div>
+        )}
         <div className="flex items-center justify-between gap-4 text-sm">
           <span className="text-[var(--ink-muted)]">Bonus tanga</span>
           <span className="font-mono-num font-semibold text-amber-600 dark:text-[#E5B94C]">

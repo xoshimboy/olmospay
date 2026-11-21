@@ -1,4 +1,5 @@
-import { resolveCatalogPack } from './_catalog-map.js';
+import { calculatePackCoins, resolveCatalogPack } from './_catalog-map.js';
+import { calculateSmmPrice } from './smm-pricing.js';
 import {
   checkRateLimit,
   escapeHtml,
@@ -72,6 +73,27 @@ export async function handler(event) {
     return jsonResponse(400, { ok: false, error: 'Tanlangan o‘yin yoki paket topilmadi' }, origin);
   }
 
+  const isCustomSmm = pack.category === 'smm' && pack.sora?.type === 'smm' && Number.isSafeInteger(pack.sora.quantity);
+  let requestedQuantity;
+  if (isCustomSmm) {
+    requestedQuantity = Number(body.quantity);
+    if (!Number.isSafeInteger(requestedQuantity) || requestedQuantity < pack.sora.quantity || requestedQuantity > 1_000_000) {
+      return jsonResponse(400, {
+        ok: false,
+        error: `Miqdor ${pack.sora.quantity.toLocaleString('uz-UZ')} dan 1 000 000 gacha butun son bo‘lishi kerak.`,
+      }, origin);
+    }
+  }
+  const expectedPrice = isCustomSmm
+    ? calculateSmmPrice(requestedQuantity, pack.sora.quantity, pack.priceUzs)
+    : pack.priceUzs;
+  const orderPackLabel = isCustomSmm
+    ? pack.packLabel.replace(/^[\d\s,._]+/, `${requestedQuantity.toLocaleString('uz-UZ')} `)
+    : pack.packLabel;
+  const orderCoinsReward = isCustomSmm
+    ? calculatePackCoins({ amount: requestedQuantity, unit: pack.unit, category: pack.category, priceUzs: expectedPrice })
+    : pack.coinsReward;
+
   const requestedRegion = String(body.region || 'global').trim().toLowerCase();
   const supportedFreeFireRegions = new Set(['global', 'cis', 'br', 'eu', 'me']);
   if (gameId === 'freefire' && !supportedFreeFireRegions.has(requestedRegion)) {
@@ -80,11 +102,11 @@ export async function handler(event) {
   const isAutomaticRegion = gameId !== 'freefire' || requestedRegion === 'global';
 
   const clientPrice = Number(body.price);
-  if (!Number.isInteger(clientPrice) || clientPrice <= 0 || clientPrice !== pack.priceUzs) {
+  if (!Number.isSafeInteger(clientPrice) || clientPrice <= 0 || clientPrice !== expectedPrice) {
     return jsonResponse(409, {
       ok: false,
       code: 'price_mismatch',
-      serverPrice: pack.priceUzs,
+      serverPrice: expectedPrice,
       error: 'Paket narxi yangilangan. Sahifani yangilab qayta urining.',
     }, origin);
   }
@@ -129,9 +151,9 @@ export async function handler(event) {
     gameId: pack.gameId,
     gameName: pack.gameName,
     packId: pack.packId,
-    packLabel: pack.packLabel,
-    priceUzs: pack.priceUzs,
-    coinsReward: pack.coinsReward,
+    packLabel: orderPackLabel,
+    priceUzs: expectedPrice,
+    coinsReward: orderCoinsReward,
     playerId: targetCheck.value,
     playerDisplay: targetCheck.display,
     server: serverCheck.value,
@@ -140,7 +162,7 @@ export async function handler(event) {
       : pack.sora?.region || '',
     soraService: pack.sora?.service || '',
     soraItem: isAutomaticRegion ? pack.sora?.item || '' : '',
-    soraQuantity: pack.sora?.quantity || null,
+    soraQuantity: isCustomSmm ? requestedQuantity : pack.sora?.quantity || null,
     soraType: pack.sora?.type || 'game',
     expectedSoraPrice: pack.sora?.expectedSoraPrice || null,
     mapped: isAutomaticRegion && Boolean(pack.sora && pack.sora.service && (pack.sora.item || pack.sora.quantity)),
@@ -188,8 +210,8 @@ export async function handler(event) {
       `<b>YANGI BUYURTMA · ${escapeHtml(ref)}</b>`,
       '',
       `<b>O‘yin:</b> ${escapeHtml(pack.gameName)}`,
-      `<b>Paket:</b> ${escapeHtml(pack.packLabel)}`,
-      `<b>Summa:</b> ${pack.priceUzs.toLocaleString('uz-UZ')} so‘m (+${pack.coinsReward} tanga)`,
+      `<b>Paket:</b> ${escapeHtml(orderPackLabel)}`,
+      `<b>Summa:</b> ${expectedPrice.toLocaleString('uz-UZ')} so‘m (+${orderCoinsReward} tanga)`,
       `<b>Kiritilgan ID:</b> <code>${escapeHtml(targetCheck.display)}</code>`,
       serverCheck.value ? `<b>Server ID:</b> <code>${escapeHtml(serverCheck.value)}</code>` : null,
       gameId === 'freefire' ? `<b>Region:</b> ${escapeHtml(requestedRegion.toUpperCase())}` : null,
@@ -238,8 +260,9 @@ export async function handler(event) {
       orderToken,
       status: 'pending',
       region: gameId === 'freefire' ? requestedRegion : '',
-      priceUzs: pack.priceUzs,
-      coinsReward: pack.coinsReward,
+      priceUzs: expectedPrice,
+      coinsReward: orderCoinsReward,
+      quantity: requestedQuantity || pack.sora?.quantity || null,
       mapped: orderRecord.mapped,
       adminNotified,
     },

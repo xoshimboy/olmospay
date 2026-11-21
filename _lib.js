@@ -55,7 +55,7 @@ export function getTelegramWebhookSecret() {
 }
 
 export function getCorsHeaders(requestOrigin = '') {
-  const allowedRaw = process.env.ALLOWED_ORIGIN || 'https://gamepin.uz';
+  const allowedRaw = process.env.ALLOWED_ORIGIN || 'https://olmospay.vercel.app';
   const allowedList = allowedRaw
     .split(',')
     .map((s) => s.trim())
@@ -66,6 +66,7 @@ export function getCorsHeaders(requestOrigin = '') {
     process.env.URL,
     process.env.VERCEL_PROJECT_PRODUCTION_URL,
     process.env.VERCEL_URL,
+    'https://olmospay.vercel.app',
   ]) {
     const raw = String(extra || '').trim();
     if (!raw || raw.includes('MY_APP_URL')) continue;
@@ -760,7 +761,11 @@ export async function saveCardSettings({ number, holder, bank }) {
   if (cleanNumber.replace(/\s+/g, '').length < 16 || !cleanHolder || !cleanBank) {
     throw new Error('invalid_card_settings');
   }
-  const next = { number: cleanNumber, holder: cleanHolder, bank: cleanBank };
+  const next = {
+    number: cleanNumber.replace(/\s+/g, '').replace(/(\d{4})(?=\d)/g, '$1 '),
+    holder: cleanHolder,
+    bank: cleanBank,
+  };
   const database = getDatabase();
   if (database) {
     await setAppStateValue('card-settings', next);
@@ -965,6 +970,39 @@ export async function telegramApi(method, payload, isMultipart = false) {
   return res.json().catch(() => ({ ok: false, description: 'Invalid Telegram response' }));
 }
 
+async function ensureTelegramCommandScopes() {
+  const me = await telegramApi('getMe', {});
+  if (!me?.ok || !me.result?.id) return { ok: false, error: me?.description || 'Telegram bot token invalid' };
+
+  const adminId = String(process.env.TG_ADMIN_ID || '').trim();
+  const marker = `v1:${me.result.id}:${adminId}`;
+  if ((await getAppStateValue('telegram-command-scopes')) === marker) return { ok: true, cached: true };
+
+  const customerCommands = [
+    { command: 'start', description: 'Do‘konni ochish va boshlash' },
+    { command: 'tanga', description: 'Olmos tanga balansim (60 UC = 6 tanga)' },
+  ];
+  const globalResult = await telegramApi('setMyCommands', { commands: customerCommands });
+  if (!globalResult?.ok) return { ok: false, error: globalResult?.description || 'Customer commands setup failed' };
+
+  if (adminId) {
+    const adminResult = await telegramApi('setMyCommands', {
+      scope: { type: 'chat', chat_id: adminId },
+      commands: [
+        ...customerCommands,
+        { command: 'panel', description: 'Admin panelni ochish' },
+        { command: 'balans', description: 'Sora balansini tekshirish' },
+        { command: 'xizmatlar', description: 'Sora faol xizmatlari' },
+        { command: 'holat', description: 'Buyurtma holatini tekshirish' },
+      ],
+    });
+    if (!adminResult?.ok) return { ok: false, error: adminResult?.description || 'Admin commands setup failed' };
+  }
+
+  await setAppStateValue('telegram-command-scopes', marker);
+  return { ok: true };
+}
+
 export async function ensureTelegramWebhook() {
   if (process.env.VERCEL_ENV !== 'production' || !process.env.TG_BOT_TOKEN) {
     return { ok: false, skipped: true };
@@ -974,12 +1012,11 @@ export async function ensureTelegramWebhook() {
   }
 
   const host =
+    process.env.OLMOSPAY_APP_URL ||
     process.env.VERCEL_PROJECT_PRODUCTION_URL ||
     process.env.APP_URL ||
     process.env.URL ||
-    '';
-  if (!host) return { ok: false, error: 'Production URL is not configured' };
-
+    'https://olmospay.vercel.app';
   let baseUrl;
   try {
     const parsed = new URL(host.startsWith('http') ? host : `https://${host}`);
@@ -991,19 +1028,24 @@ export async function ensureTelegramWebhook() {
 
   const url = `${baseUrl}/.netlify/functions/tg-webhook`;
   const info = await telegramApi('getWebhookInfo', {});
-  if (info?.ok && info.result?.url === url) {
-    telegramWebhookConfiguredAt = Date.now();
-    return { ok: true, url };
+  if (!info?.ok || info.result?.url !== url) {
+    const result = await telegramApi('setWebhook', {
+      url,
+      secret_token: getTelegramWebhookSecret(),
+      allowed_updates: ['message', 'callback_query'],
+    });
+    if (!result?.ok) {
+      return { ok: false, error: result?.description || 'Telegram webhook setup failed' };
+    }
   }
 
-  const result = await telegramApi('setWebhook', {
-    url,
-    secret_token: getTelegramWebhookSecret(),
-    allowed_updates: ['message', 'callback_query'],
-  });
-  if (!result?.ok) {
-    return { ok: false, error: result?.description || 'Telegram webhook setup failed' };
+  let commands = { ok: false, error: 'Telegram commands setup did not run' };
+  try {
+    commands = await ensureTelegramCommandScopes();
+  } catch {
+    commands = { ok: false, error: 'Telegram command setup could not be persisted' };
   }
+  if (!commands.ok) console.error('[Telegram commands setup error]', commands.error);
   telegramWebhookConfiguredAt = Date.now();
-  return { ok: true, url };
+  return { ok: true, url, commandsConfigured: commands.ok };
 }

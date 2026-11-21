@@ -36,16 +36,14 @@ function isAdmin(fromUser) {
 }
 
 function getMiniAppHttpsUrl() {
-  const candidates = [process.env.APP_URL, process.env.URL, process.env.ALLOWED_ORIGIN];
-  for (const raw of candidates) {
-    const first = String(raw || '')
-      .split(',')[0]
-      .trim();
-    if (first.startsWith('https://') && !first.includes('MY_APP_URL')) {
-      return first;
-    }
+  const configured = String(process.env.OLMOSPAY_APP_URL || 'https://olmospay.vercel.app').trim();
+  try {
+    const url = new URL(configured);
+    if (url.protocol === 'https:') return url.origin;
+  } catch {
+    // Fall through to the verified production domain.
   }
-  return 'https://gamepin.uz';
+  return 'https://olmospay.vercel.app';
 }
 
 async function editAdminMessage(chatId, messageId, isCaption, text, replyMarkup = undefined) {

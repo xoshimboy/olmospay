@@ -1589,7 +1589,7 @@ export function AdminPanelPage({
                       maxLength={24}
                       value={cardNumber}
                       onChange={(e) => setCardNumber(e.target.value)}
-                      placeholder="9860 0000 0000 0000"
+                      placeholder="4916 9903 5856 6955"
                       className="w-full min-h-[48px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 text-base font-mono-num text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]"
                     />
                     <p className="mt-2 text-xs text-[#6C6C70]">Saqlangandan so‘ng karta raqami mijozlarning to‘lov oynasida avtomatik ko‘rinadi.</p>

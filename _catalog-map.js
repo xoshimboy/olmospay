@@ -23,9 +23,9 @@ export const SORA_SERVICES = {
 };
 
 export const PAYMENT_CARD = {
-  number: '9860 0000 0000 0000',
+  number: '4916 9903 5856 6955',
   holder: 'OLMOS PAY',
-  bank: 'Humo / Uzcard',
+  bank: 'Karta',
 };
 
 export const CATALOG = [
@@ -748,6 +748,7 @@ export function resolveCatalogPack(gameId, packId) {
     requiresServer: Boolean(game.requiresServer),
     packId: pack.id,
     packLabel: pack.label,
+    unit: pack.unit,
     priceUzs,
     coinsReward,
     sora: pack.sora

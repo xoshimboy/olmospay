@@ -1,9 +1,9 @@
 import type { GameItem } from '../types';
 
 export const CARD_INFO = {
-  number: '9860 0000 0000 0000',
+  number: '4916 9903 5856 6955',
   holder: 'OLMOS PAY',
-  bank: 'Humo / Uzcard',
+  bank: 'Karta',
 };
 
 export const BANNER_IMAGES = [

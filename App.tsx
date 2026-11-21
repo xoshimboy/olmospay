@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -13,6 +13,7 @@ import {
   Headphones,
   AlertCircle,
 } from 'lucide-react';
+import { AppLoader } from './components/AppLoader';
 import { BannerCarousel } from './components/BannerCarousel';
 import { BottomNav } from './components/BottomNav';
 import { CheckoutPage } from './components/CheckoutPage';
@@ -34,7 +35,7 @@ import type {
   TgUser,
 } from './types';
 import { calculatePackCoins, formatUzs, validatePlayerInput } from './utils/format';
-import { getTg, initTelegramApp, triggerHaptic } from './utils/telegram';
+import { getTg, initTelegramApp, readyTelegramApp, triggerHaptic } from './utils/telegram';
 
 const AdminPanelPage = lazy(() =>
   import('./components/AdminPanelPage').then((m) => ({ default: m.AdminPanelPage }))
@@ -141,6 +142,8 @@ function consumeAdminTokenFromUrl(): string {
 
 export default function App() {
   const [isPanelRoute, setIsPanelRoute] = useState<boolean>(() => detectPanelRoute());
+  const [isBootReady, setIsBootReady] = useState(false);
+  const telegramReadyRef = useRef(false);
   const [urlAdminToken] = useState<string>(() => consumeAdminTokenFromUrl());
   const [pageStack, setPageStack] = useState<PageId[]>(['p-home']);
   const activePage = pageStack[pageStack.length - 1];
@@ -226,6 +229,59 @@ export default function App() {
     if (user) setTgUser(user);
     if (rawInit) setInitData(rawInit);
   }, []);
+
+  useEffect(() => {
+    if (isPanelRoute) {
+      setIsBootReady(true);
+      return;
+    }
+
+    let active = true;
+    const images = Array.from(document.images);
+    images.forEach((image) => {
+      image.loading = 'eager';
+    });
+
+    const urls = new Set<string>([
+      ...images.map((image) => image.currentSrc || image.src),
+      ...Object.values(customMedia),
+    ]);
+    urls.delete('');
+
+    const imageLoads = Array.from(urls, (src) =>
+      new Promise<void>((resolve) => {
+        const image = new Image();
+        image.onload = () => resolve();
+        image.onerror = () => resolve();
+        image.src = src;
+        if (image.complete) {
+          if (typeof image.decode === 'function') {
+            void image.decode().catch(() => undefined).finally(resolve);
+          } else {
+            resolve();
+          }
+        }
+      })
+    );
+    const minimumDisplay = new Promise<void>((resolve) => window.setTimeout(resolve, 650));
+    const maximumWait = new Promise<void>((resolve) => window.setTimeout(resolve, 12000));
+
+    void Promise.race([Promise.allSettled(imageLoads).then(() => undefined), maximumWait])
+      .then(() => minimumDisplay)
+      .then(() => {
+        if (active) {
+          setIsBootReady(true);
+          if (!telegramReadyRef.current) {
+            readyTelegramApp();
+            telegramReadyRef.current = true;
+          }
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [customMedia, isPanelRoute]);
 
   useEffect(() => {
     applyTheme(theme);
@@ -571,6 +627,7 @@ export default function App() {
 
   return (
     <div className="relative min-h-screen text-[var(--ink)] flex flex-col">
+      <AppLoader visible={!isBootReady} />
       {/* Global Animated Apple iOS Mesh Wallpaper */}
       <div
         aria-hidden="true"

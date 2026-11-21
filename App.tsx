@@ -35,6 +35,7 @@ import type {
   TgUser,
 } from './types';
 import { calculatePackCoins, formatUzs, validatePlayerInput } from './utils/format';
+import { calculateSmmPrice } from './smm-pricing.js';
 import { getTg, initTelegramApp, readyTelegramApp, triggerHaptic } from './utils/telegram';
 
 const AdminPanelPage = lazy(() =>
@@ -178,6 +179,7 @@ export default function App() {
   const [selectedRegion, setSelectedRegion] = useState<GameRegion>('global');
   const [playerID, setPlayerID] = useState<string>('');
   const [serverID, setServerID] = useState<string>('');
+  const [smmQuantity, setSmmQuantity] = useState('1000');
   const [gameFormError, setGameFormError] = useState<string>('');
 
   const [checkoutData, setCheckoutData] = useState<{
@@ -323,7 +325,7 @@ export default function App() {
       try {
         const [catRes, mediaRes] = await Promise.all([
           fetch('/.netlify/functions/sora?path=public-catalog'),
-          fetch('/.netlify/functions/admin-media'),
+          fetch('/.netlify/functions/admin-media', { cache: 'no-store' }),
         ]);
         if (catRes.ok) {
           const data = await catRes.json();
@@ -492,6 +494,7 @@ export default function App() {
       setSelectedRegion('global');
       setPlayerID('');
       setServerID('');
+      setSmmQuantity(String(target.packs[0]?.amount || 1000));
       setGameFormError('');
       navPage('p-game');
     },
@@ -507,6 +510,27 @@ export default function App() {
     () => selectedGame.packs.find((p) => p.id === selectedPackId) || null,
     [selectedGame, selectedPackId]
   );
+  const selectedOrderPack = useMemo(() => {
+    if (!selectedPack) return null;
+    if (selectedGame.category !== 'smm') return selectedPack;
+
+    const quantity = Number(smmQuantity);
+    if (!Number.isSafeInteger(quantity) || quantity < selectedPack.amount || quantity > 1_000_000) return null;
+
+    const quantityLabel = quantity.toLocaleString('uz-UZ');
+    return {
+      ...selectedPack,
+      amount: quantity,
+      label: selectedPack.label.replace(/^[\d\s,._]+/, `${quantityLabel} `),
+      priceUzs: calculateSmmPrice(quantity, selectedPack.amount, selectedPack.priceUzs),
+      coinsReward: calculatePackCoins({
+        amount: quantity,
+        unit: selectedPack.unit,
+        category: selectedGame.category,
+        priceUzs: calculateSmmPrice(quantity, selectedPack.amount, selectedPack.priceUzs),
+      }),
+    };
+  }, [selectedGame.category, selectedPack, smmQuantity]);
 
   const packageGroups = Array.from(new Set(selectedGame.packs.map((pack) => getPackGroup(selectedGame.id, pack))));
   const visiblePacks = selectedGame.packs.filter(
@@ -551,6 +575,11 @@ export default function App() {
       triggerHaptic('error');
       return;
     }
+    if (!selectedOrderPack) {
+      setGameFormError('Miqdor paket minimumidan 1 000 000 gacha bo‘lishi kerak.');
+      triggerHaptic('error');
+      return;
+    }
     const check = validatePlayerInput(
       playerID,
       selectedGame.inputType,
@@ -568,7 +597,7 @@ export default function App() {
 
     setCheckoutData({
       game: selectedGame,
-      pack: selectedPack,
+      pack: selectedOrderPack,
       playerID: check.cleanId,
       serverID: check.cleanServer,
       region: selectedRegion,
@@ -1012,7 +1041,10 @@ export default function App() {
                             const nextPack = selectedGame.packs.find(
                               (pack) => group === 'all' || getPackGroup(selectedGame.id, pack) === group
                             );
-                            if (nextPack) setSelectedPackId(nextPack.id);
+                            if (nextPack) {
+                              setSelectedPackId(nextPack.id);
+                              setSmmQuantity(String(nextPack.amount));
+                            }
                             setGameFormError('');
                           }}
                           className={`min-h-[38px] px-3 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
@@ -1047,6 +1079,7 @@ export default function App() {
                       type="button"
                       onClick={() => {
                         setSelectedPackId(pack.id);
+                        setSmmQuantity(String(pack.amount));
                         setGameFormError('');
                         triggerHaptic('light');
                       }}
@@ -1096,25 +1129,49 @@ export default function App() {
               </div>
             </section>
 
+            {selectedGame.category === 'smm' && selectedPack && (
+              <section aria-labelledby="smm-quantity-title" className="ios-glass-card rounded-[22px] border border-[#007AFF]/20 p-5 space-y-3">
+                <label id="smm-quantity-title" htmlFor="smm-quantity" className="block text-sm font-semibold text-[var(--ink)]">
+                  Buyurtma miqdori ({selectedPack.unit})
+                </label>
+                <input
+                  id="smm-quantity"
+                  type="number"
+                  inputMode="numeric"
+                  min={selectedPack.amount}
+                  max={1_000_000}
+                  step={1}
+                  value={smmQuantity}
+                  aria-invalid={!selectedOrderPack}
+                  onChange={(event) => {
+                    setSmmQuantity(event.target.value);
+                    setGameFormError('');
+                  }}
+                  className="w-full min-h-[52px] rounded-xl border border-[#007AFF]/30 bg-[var(--surface)] px-4 text-lg font-mono-num font-semibold text-[var(--ink)] focus:outline-none focus:ring-2 focus:ring-[#007AFF]/25"
+                />
+                <p className="text-xs text-[var(--ink-muted)]">
+                  Minimal miqdor {selectedPack.amount.toLocaleString('uz-UZ')}. Narx tanlangan xizmat tarifiga qarab avtomatik hisoblanadi.
+                </p>
+              </section>
+            )}
 
             {/* Sticky Purchase Bar */}
             <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-[var(--line)] bg-[var(--surface)]/95 backdrop-blur-md px-4 py-3 pb-safe md:static md:rounded-2xl md:border md:p-5">
               <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
                 <div className="min-w-0">
                   <p className="text-xs text-[var(--ink-muted)] truncate">
-                    {selectedPack ? (
+                    {selectedOrderPack ? (
                       <>
-                        <span>{selectedPack.label}</span>
+                        <span>{selectedOrderPack.label}</span>
                         <span className="text-amber-600 dark:text-[#E5B94C] font-mono-num font-semibold whitespace-nowrap">
                           {' '}
                           · 🪙 +
-                          {selectedPack.coinsReward ??
-                            calculatePackCoins({
-                              amount: selectedPack.amount,
-                              unit: selectedPack.unit,
-                              category: selectedGame.category,
-                              priceUzs: selectedPack.priceUzs,
-                            })}{' '}
+                          {calculatePackCoins({
+                            amount: selectedOrderPack.amount,
+                            unit: selectedOrderPack.unit,
+                            category: selectedGame.category,
+                            priceUzs: selectedOrderPack.priceUzs,
+                          })}{' '}
                           {t.coinsUnit}
                         </span>
                       </>
@@ -1123,7 +1180,7 @@ export default function App() {
                     )}
                   </p>
                   <p className="font-mono-num text-base sm:text-lg font-bold text-[var(--gold-2)] dark:text-[#E5B94C] whitespace-nowrap">
-                    {selectedPack ? formatUzs(selectedPack.priceUzs, t.uzs) : '—'}
+                    {selectedOrderPack ? formatUzs(selectedOrderPack.priceUzs, t.uzs) : '—'}
                   </p>
                 </div>
                 <button
@@ -1175,7 +1232,8 @@ export default function App() {
 
               <div className="flex items-center justify-between gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-3.5 sm:px-4 py-3.5">
                 <span className="font-mono-num text-sm sm:text-lg font-bold tracking-wider text-[var(--ink)] whitespace-nowrap">
-                  {cardInfo.number}
+                    {cardInfo.number.replace(/\s+/g, '').replace(/(\d{4})(?=\d)/g, '$1 ')}
+
                 </span>
                 <button
                   type="button"

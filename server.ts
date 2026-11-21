@@ -131,16 +131,25 @@ async function startTelegramBotRunner() {
       }
     }
 
-    await telegramApi('setMyCommands', {
-      commands: [
-        { command: 'start', description: 'Do‘konni ochish va boshlash' },
-        { command: 'tanga', description: 'Olmos tanga balansim (60 UC = 6 tanga)' },
-        { command: 'panel', description: 'Admin panelni ochish (Admin)' },
-        { command: 'balans', description: 'Sora balansini tekshirish (Admin)' },
-        { command: 'xizmatlar', description: 'Sora faol xizmatlari (Admin)' },
-        { command: 'holat', description: 'Buyurtma holatini tekshirish (Admin)' },
-      ],
-    });
+    const customerCommands = [
+      { command: 'start', description: 'Do‘konni ochish va boshlash' },
+      { command: 'tanga', description: 'Olmos tanga balansim (60 UC = 6 tanga)' },
+    ];
+    const adminCommands = [
+      ...customerCommands,
+      { command: 'panel', description: 'Admin panelni ochish' },
+      { command: 'balans', description: 'Sora balansini tekshirish' },
+      { command: 'xizmatlar', description: 'Sora faol xizmatlari' },
+      { command: 'holat', description: 'Buyurtma holatini tekshirish' },
+    ];
+
+    await telegramApi('setMyCommands', { commands: customerCommands });
+    if (process.env.TG_ADMIN_ID) {
+      await telegramApi('setMyCommands', {
+        scope: { type: 'chat', chat_id: process.env.TG_ADMIN_ID },
+        commands: adminCommands,
+      });
+    }
 
     const wh = await telegramApi('getWebhookInfo', {});
     const whUrl = String(wh?.result?.url || '');

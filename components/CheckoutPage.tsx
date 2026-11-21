@@ -54,6 +54,7 @@ export function CheckoutPage({
   const [submitting, setSubmitting] = useState(false);
   const [submittedRef, setSubmittedRef] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const formattedCardNumber = cardInfo.number.replace(/\s+/g, '').replace(/(\d{4})(?=\d)/g, '$1 ');
   const coinsReward =
     pack.coinsReward ??
     calculatePackCoins({
@@ -132,6 +133,7 @@ export function CheckoutPage({
           gameId: game.id,
           packId: pack.id,
           price: pack.priceUzs,
+          ...(game.category === 'smm' ? { quantity: pack.amount } : {}),
           playerID,
           server: serverID,
           region,
@@ -301,7 +303,7 @@ export function CheckoutPage({
 
         <div className="flex flex-col gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-3.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:px-4 py-3">
           <span className="font-mono-num text-base sm:text-lg font-semibold tracking-wider text-[var(--ink)] whitespace-nowrap">
-            {cardInfo.number}
+            {formattedCardNumber}
           </span>
           <button
             type="button"

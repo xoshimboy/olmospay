@@ -47,11 +47,11 @@ export const CATALOG = [
     soraService: 'gmvdpia85',
     packs: [
       {
-        id: 'pubg_60',
-        label: '60 UC',
-        amount: 60,
-        unit: 'UC',
-        priceUzs: 13000,
+    id: 'pubg_60',
+    label: '60 UC',
+    amount: 60,
+    unit: 'UC',
+    priceUzs: 11700,
         sora: { service: 'gmvdpia85', item: '264', type: 'game', expectedSoraPrice: 12100 },
       },
       {
@@ -59,7 +59,7 @@ export const CATALOG = [
         label: '325 UC',
         amount: 325,
         unit: 'UC',
-        priceUzs: 64000,
+        priceUzs: 60900,
         sora: { service: 'gmvdpia85', item: '248', type: 'game', expectedSoraPrice: 60900 },
       },
       {
@@ -67,7 +67,7 @@ export const CATALOG = [
         label: '660 UC',
         amount: 660,
         unit: 'UC',
-        priceUzs: 128000,
+        priceUzs: 121900,
         sora: { service: 'gmvdpia85', item: '258', type: 'game', expectedSoraPrice: 121900 },
       },
       {
@@ -75,7 +75,7 @@ export const CATALOG = [
         label: '1800 UC',
         amount: 1800,
         unit: 'UC',
-        priceUzs: 309000,
+        priceUzs: 293700,
         sora: { service: 'gmvdpia85', item: '2968', type: 'game', expectedSoraPrice: 293700 },
       },
       {
@@ -83,7 +83,7 @@ export const CATALOG = [
         label: '2460 UC',
         amount: 2460,
         unit: 'UC',
-        priceUzs: 435000,
+        priceUzs: 415900,
         sora: { service: 'gmvdpia85', item: '259', type: 'game', expectedSoraPrice: 415900 },
       },
       {
@@ -91,7 +91,7 @@ export const CATALOG = [
         label: 'Elite Pass LV1-50',
         amount: 1,
         unit: 'Pass',
-        priceUzs: 75000,
+        priceUzs: 70000,
         sora: { service: 'gmvdpia85', item: '255', type: 'game', expectedSoraPrice: 70000 },
       },
     ],
@@ -523,7 +523,7 @@ export const CATALOG = [
     name: 'Telegram',
     badge: '100+',
     category: 'smm',
-    subtitle: '100 so‘m dan · Obunachi, ko‘rish, reaksiya',
+    subtitle: '100 ta = 10 so‘m · Obunachi, ko‘rish, reaksiya',
     inputType: 'url',
     inputLabel: {
       uz: 'Telegram kanal yoki post havolasi',
@@ -573,7 +573,7 @@ export const CATALOG = [
     name: 'Instagram',
     badge: '76',
     category: 'smm',
-    subtitle: '100 so‘m dan · Layk, Reels ko‘rish, obunachi',
+    subtitle: '100 ta = 10 so‘m · Layk, Reels ko‘rish, obunachi',
     inputType: 'url',
     inputLabel: {
       uz: 'Instagram profil yoki post havolasi',
@@ -623,7 +623,7 @@ export const CATALOG = [
     name: 'YouTube',
     badge: '298',
     category: 'smm',
-    subtitle: '2 000 so‘m dan · Ko‘rish, layk, obunachi',
+    subtitle: '100 ta = 10 so‘m · Ko‘rish, layk, obunachi',
     inputType: 'url',
     inputLabel: {
       uz: 'YouTube video yoki kanal havolasi',
@@ -665,7 +665,7 @@ export const CATALOG = [
     name: 'TikTok',
     badge: '67',
     category: 'smm',
-    subtitle: '700 so‘m dan · Ko‘rish, layk, obunachi',
+    subtitle: '100 ta = 10 so‘m · Ko‘rish, layk, obunachi',
     inputType: 'url',
     inputLabel: {
       uz: 'TikTok video yoki profil havolasi',
@@ -718,14 +718,42 @@ export function calculatePackCoins({ amount = 0, unit = '', category = 'games', 
   return Math.max(1, Math.round(price / 2200));
 }
 
-export function resolveCatalogPack(gameId, packId) {
+const SMM_MIN_QUANTITY = 100;
+const SMM_MAX_QUANTITY = 1_000_000;
+
+function calculateSmmPrice(quantity) {
+  return Math.round(Number(quantity) / 10);
+}
+
+function formatSmmPackLabel(label, quantity) {
+  return String(label).replace(/^\d[\d,.\s]*/, `${Number(quantity).toLocaleString('uz-UZ')} `).trim();
+}
+
+function getCatalogPrice(game, pack) {
+  if (game.category === 'smm') return calculateSmmPrice(pack.amount);
+  return Math.round(Number(pack.priceUzs));
+}
+
+export function resolveCatalogPack(gameId, packId, rawQuantity) {
   const game = CATALOG.find((g) => g.id === gameId);
   if (!game) return null;
   const pack = game.packs.find((p) => p.id === packId);
   if (!pack) return null;
-  const priceUzs = Math.round(Number(pack.priceUzs));
+
+  const isSmm = game.category === 'smm';
+  const amount = isSmm
+    ? rawQuantity === undefined
+      ? Number(pack.amount)
+      : Number(rawQuantity)
+    : Number(pack.amount);
+  if (isSmm && (!Number.isSafeInteger(amount) || amount < SMM_MIN_QUANTITY || amount > SMM_MAX_QUANTITY)) {
+    return null;
+  }
+
+  const priceUzs = isSmm ? calculateSmmPrice(amount) : getCatalogPrice(game, pack);
+  const packLabel = isSmm ? formatSmmPackLabel(pack.label, amount) : pack.label;
   const coinsReward = calculatePackCoins({
-    amount: pack.amount,
+    amount,
     unit: pack.unit,
     category: game.category,
     priceUzs,
@@ -737,14 +765,15 @@ export function resolveCatalogPack(gameId, packId) {
     inputType: game.inputType,
     requiresServer: Boolean(game.requiresServer),
     packId: pack.id,
-    packLabel: pack.label,
+    packLabel,
+    amount,
     priceUzs,
     coinsReward,
     sora: pack.sora
       ? {
           service: String(pack.sora.service),
           item: pack.sora.item ? String(pack.sora.item) : '',
-          quantity: pack.sora.quantity ? Math.round(Number(pack.sora.quantity)) : undefined,
+          quantity: isSmm ? amount : pack.sora.quantity ? Math.round(Number(pack.sora.quantity)) : undefined,
           type: String(pack.sora.type || 'game'),
           region: pack.sora.region ? String(pack.sora.region) : '',
           expectedSoraPrice: pack.sora.expectedSoraPrice
@@ -774,12 +803,12 @@ export function getPublicCatalog() {
       label: p.label,
       amount: p.amount,
       unit: p.unit,
-      priceUzs: p.priceUzs,
+      priceUzs: getCatalogPrice(game, p),
       coinsReward: calculatePackCoins({
         amount: p.amount,
         unit: p.unit,
         category: game.category,
-        priceUzs: p.priceUzs,
+        priceUzs: getCatalogPrice(game, p),
       }),
       autoDelivery: Boolean(p.sora && p.sora.service && (p.sora.item || p.sora.quantity)),
     })),

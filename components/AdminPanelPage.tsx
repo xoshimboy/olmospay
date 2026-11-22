@@ -61,6 +61,7 @@ interface AdminOrderRecord {
   lastError?: string;
   createdAt: number;
   updatedAt?: number;
+  archivedAt?: number;
 }
 
 interface AdminMessageLog {
@@ -74,6 +75,14 @@ interface AdminMessageLog {
   status: 'sent' | 'partial' | 'failed';
 }
 
+interface AdminPromoCode {
+  code: string;
+  discountPercent: number;
+  maxUses: number;
+  usedCount: number;
+  active: boolean;
+}
+
 interface AdminDashboardData {
   ok: boolean;
   authMode: string;
@@ -84,9 +93,15 @@ interface AdminDashboardData {
     processingOrders: number;
     canceledOrders: number;
     totalRevenueUzs: number;
+    totalExpenseUzs: number;
+    totalProfitUzs: number;
+    unknownExpenseOrders: number;
+    financialOrderCount: number;
     uniqueCustomers: number;
     storeServicesCount: number;
   };
+  storeSettings: { disabledGameIds: string[] };
+  promoCodes: AdminPromoCode[];
   orders: AdminOrderRecord[];
   messageLogs: AdminMessageLog[];
   card: CardInfo;
@@ -122,6 +137,7 @@ interface AdminPanelPageProps {
   initialAdminToken?: string;
   onMediaUpdated: (media: Record<string, string>) => void;
   onCardUpdated: (card: CardInfo) => void;
+  onStoreSettingsUpdated?: (settings: { disabledGameIds: string[] }) => void;
   onBackToStore?: () => void;
 }
 
@@ -138,6 +154,7 @@ export function AdminPanelPage({
   initialAdminToken = '',
   onMediaUpdated,
   onCardUpdated,
+  onStoreSettingsUpdated,
   onBackToStore,
 }: AdminPanelPageProps) {
   const [activeTab, setActiveTab] = useState<AdminTab>('stats');
@@ -188,6 +205,12 @@ export function AdminPanelPage({
   const [cardHolder, setCardHolder] = useState(cardInfo.holder || CARD_INFO.holder);
   const [cardBank, setCardBank] = useState(cardInfo.bank || CARD_INFO.bank);
   const [savingCard, setSavingCard] = useState(false);
+  const [storeSettingsForm, setStoreSettingsForm] = useState({ disabledGameIds: ['tg-account', 'tg-giveaway'] });
+  const [savingStoreSettings, setSavingStoreSettings] = useState(false);
+  const [promoCodeDraft, setPromoCodeDraft] = useState('');
+  const [promoPercentDraft, setPromoPercentDraft] = useState('2');
+  const [promoMaxUsesDraft, setPromoMaxUsesDraft] = useState('100');
+  const [savingPromoCode, setSavingPromoCode] = useState(false);
 
   // Telegram broadcast / direct message state
   const [msgTarget, setMsgTarget] = useState<'admin' | 'broadcast' | 'custom'>('admin');
@@ -230,6 +253,11 @@ export function AdminPanelPage({
           return;
         }
         setDashboard(data);
+        if (Array.isArray(data.storeSettings?.disabledGameIds)) {
+          const nextSettings = { disabledGameIds: data.storeSettings.disabledGameIds };
+          setStoreSettingsForm(nextSettings);
+          onStoreSettingsUpdated?.(nextSettings);
+        }
         if (data.card) {
           onCardUpdated(data.card);
           setCardNumber(data.card.number);
@@ -242,7 +270,7 @@ export function AdminPanelPage({
         setLoading(false);
       }
     },
-    [buildAuthHeaders, onCardUpdated]
+    [buildAuthHeaders, onCardUpdated, onStoreSettingsUpdated]
   );
 
   useEffect(() => {
@@ -275,7 +303,7 @@ export function AdminPanelPage({
     loadDashboard('');
   }
 
-  async function runOrderAction(ref: string, action: 'approve-order' | 'check-order' | 'manual-done' | 'reject-order') {
+  async function runOrderAction(ref: string, action: 'approve-order' | 'check-order' | 'manual-done' | 'reject-order' | 'archive-order') {
     setBannerNotice(null);
     setBusyOrderRef(ref);
     try {
@@ -410,6 +438,82 @@ export function AdminPanelPage({
     }
   }
 
+  async function handleSaveStoreSettings(e: React.FormEvent) {
+    e.preventDefault();
+    setBannerNotice(null);
+    setSavingStoreSettings(true);
+    try {
+      const res = await fetch('/.netlify/functions/admin-panel', {
+        method: 'POST',
+        headers: buildAuthHeaders(),
+        body: JSON.stringify({
+          action: 'save-store-settings',
+          storeSettings: storeSettingsForm,
+          initData,
+          adminKey,
+          adminToken,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok || !Array.isArray(data.storeSettings?.disabledGameIds)) {
+        setBannerNotice({ type: 'err', text: data?.error || 'Do‘kon sozlamalarini saqlab bo‘lmadi.' });
+        return;
+      }
+      const nextSettings = { disabledGameIds: data.storeSettings.disabledGameIds };
+      setStoreSettingsForm(nextSettings);
+      setDashboard((current) => (current ? { ...current, storeSettings: nextSettings } : current));
+      onStoreSettingsUpdated?.(nextSettings);
+      setBannerNotice({ type: 'ok', text: 'Xizmatlar holati saqlandi va do‘konda yangilandi.' });
+    } catch {
+      setBannerNotice({ type: 'err', text: t.errNetwork });
+    } finally {
+      setSavingStoreSettings(false);
+    }
+  }
+
+  async function persistPromoCode(promoCode: Omit<AdminPromoCode, 'usedCount'>) {
+    setBannerNotice(null);
+    setSavingPromoCode(true);
+    try {
+      const res = await fetch('/.netlify/functions/admin-panel', {
+        method: 'POST',
+        headers: buildAuthHeaders(),
+        body: JSON.stringify({ action: 'save-promo-code', promoCode, initData, adminKey, adminToken }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok || !Array.isArray(data.promoCodes)) {
+        setBannerNotice({ type: 'err', text: data?.error || 'Promo kodni saqlab bo‘lmadi.' });
+        return;
+      }
+      setDashboard((current) => (current ? { ...current, promoCodes: data.promoCodes } : current));
+      setPromoCodeDraft('');
+      setBannerNotice({ type: 'ok', text: 'Promo kod va foydalanish limiti saqlandi.' });
+    } catch {
+      setBannerNotice({ type: 'err', text: t.errNetwork });
+    } finally {
+      setSavingPromoCode(false);
+    }
+  }
+
+  async function handleSavePromoCode(e: React.FormEvent) {
+    e.preventDefault();
+    await persistPromoCode({
+      code: promoCodeDraft.trim().toUpperCase(),
+      discountPercent: Number(promoPercentDraft),
+      maxUses: Number(promoMaxUsesDraft),
+      active: true,
+    });
+  }
+
+  async function togglePromoCode(promo: AdminPromoCode) {
+    await persistPromoCode({
+      code: promo.code,
+      discountPercent: promo.discountPercent,
+      maxUses: promo.maxUses,
+      active: !promo.active,
+    });
+  }
+
   async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault();
     if (!msgText.trim()) return;
@@ -485,7 +589,7 @@ export function AdminPanelPage({
   }
 
   const filteredOrders = useMemo(() => {
-    const list = dashboard?.orders || [];
+    const list = (dashboard?.orders || []).filter((order) => !order.archivedAt);
     const q = orderSearch.trim().toLowerCase();
     return list.filter((o) => {
       if (orderFilter !== 'all') {
@@ -768,6 +872,30 @@ export function AdminPanelPage({
                   </div>
                 </div>
 
+                <section aria-label="Moliyaviy hisobot" className="space-y-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                    <div className="rounded-[20px] border border-black/[0.05] bg-white p-5 space-y-1 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                      <p className="text-xs font-medium text-[#8E8E93]">Kirim · tasdiqlangan to‘lovlar</p>
+                      <p className="font-mono-num text-xl font-bold text-[#248A3D]">{formatUzs(dashboard.stats.totalRevenueUzs, t.uzs)}</p>
+                    </div>
+                    <div className="rounded-[20px] border border-black/[0.05] bg-white p-5 space-y-1 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                      <p className="text-xs font-medium text-[#8E8E93]">Chiqim · Sora xarajati</p>
+                      <p className="font-mono-num text-xl font-bold text-[#D70015]">{formatUzs(dashboard.stats.totalExpenseUzs, t.uzs)}</p>
+                    </div>
+                    <div className="rounded-[20px] border border-black/[0.05] bg-white p-5 space-y-1 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                      <p className="text-xs font-medium text-[#8E8E93]">Qolgan foyda · taxminiy</p>
+                      <p className={`font-mono-num text-xl font-bold ${dashboard.stats.totalProfitUzs >= 0 ? 'text-[#248A3D]' : 'text-[#D70015]'}`}>
+                        {formatUzs(dashboard.stats.totalProfitUzs, t.uzs)}
+                      </p>
+                    </div>
+                  </div>
+                  {dashboard.stats.unknownExpenseOrders > 0 && (
+                    <p className="text-xs text-[#8E8E93]">
+                      {dashboard.stats.unknownExpenseOrders} ta tasdiqlangan buyurtmada Sora xarajati qaytmagan; shu sabab foyda aniq emas.
+                    </p>
+                  )}
+                </section>
+
                 {/* Live Sora API & Telegram Bot Status */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
                   <section className="rounded-[22px] border border-black/[0.05] bg-white p-5 space-y-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
@@ -981,6 +1109,7 @@ export function AdminPanelPage({
                       const isBusy = busyOrderRef === ord.ref;
                       const canApprove = ord.status === 'pending' || ord.status === 'manual_pending';
                       const canCheck = ord.status === 'processing' && ord.mapped;
+                      const canArchive = ord.status === 'canceled';
                       const canFinishOrReject =
                         ord.status === 'pending' || ord.status === 'manual_pending' || ord.status === 'processing';
 
@@ -1064,6 +1193,19 @@ export function AdminPanelPage({
                                 className="min-h-[40px] px-4 rounded-full bg-[#FF3B30]/12 hover:bg-[#FF3B30]/20 text-[#D70015] text-xs font-semibold whitespace-nowrap cursor-pointer disabled:opacity-50"
                               >
                                 Rad etish
+                              </button>
+                            </div>
+                          )}
+                          {canArchive && (
+                            <div className="border-t border-black/[0.06] pt-3">
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => runOrderAction(ord.ref, 'archive-order')}
+                                className="min-h-[38px] px-3.5 rounded-full border border-black/[0.08] bg-[#F8F9FC] hover:bg-[#F2F2F7] text-xs font-semibold text-[#6C6C70] inline-flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                              >
+                                <Trash2 size={14} />
+                                <span>Bekor qilingan buyurtmani yashirish</span>
                               </button>
                             </div>
                           )}
@@ -1632,6 +1774,130 @@ export function AdminPanelPage({
                     <span>Kartani saqlash</span>
                   </button>
                 </form>
+
+                <form
+                  onSubmit={handleSaveStoreSettings}
+                  className="rounded-[22px] border border-black/[0.05] bg-white p-5 space-y-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
+                >
+                  <div>
+                    <h2 className="font-display text-lg font-bold text-[#1C1C1E]">Do‘kon xizmatlari</h2>
+                    <p className="mt-1 text-sm text-[#6C6C70]">Yopiq xizmatlar xaridga o‘tmaydi; holat serverda ham tekshiriladi.</p>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    {([
+                      ['tg-account', 'TG Account', 'Hisob sotuvini vaqtincha to‘xtatish'],
+                      ['tg-giveaway', 'Premium Giveaway', 'Giveaway buyurtmalarini vaqtincha to‘xtatish'],
+                    ] as const).map(([id, label, description]) => {
+                      const enabled = !storeSettingsForm.disabledGameIds.includes(id);
+                      return (
+                        <label key={id} className="flex items-start gap-3 rounded-2xl border border-black/[0.06] bg-[#F8F9FC] p-3.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={enabled}
+                            onChange={(event) => {
+                              setStoreSettingsForm((current) => ({
+                                disabledGameIds: event.target.checked
+                                  ? current.disabledGameIds.filter((gameId) => gameId !== id)
+                                  : [...current.disabledGameIds, id],
+                              }));
+                            }}
+                            className="mt-0.5 size-4 accent-[#007AFF]"
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-semibold text-[#1C1C1E]">{label}</span>
+                            <span className="mt-0.5 block text-xs text-[#6C6C70]">{description}</span>
+                            <span className={`mt-1 block text-[11px] font-semibold ${enabled ? 'text-[#1F8B4D]' : 'text-[#D70015]'}`}>
+                              {enabled ? 'Faol' : 'Vaqtincha yopiq'}
+                            </span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={savingStoreSettings}
+                    className="min-h-[44px] px-5 rounded-full bg-[#007AFF] hover:bg-[#0066D6] disabled:opacity-50 text-white font-semibold text-sm inline-flex items-center gap-2 cursor-pointer"
+                  >
+                    {savingStoreSettings && <Loader2 size={15} className="animate-spin" />}
+                    <span>Holatni saqlash</span>
+                  </button>
+                </form>
+
+                <section className="lg:col-span-2 rounded-[22px] border border-black/[0.05] bg-white p-5 space-y-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                  <div>
+                    <h2 className="font-display text-lg font-bold text-[#1C1C1E]">Promo kodlar</h2>
+                    <p className="mt-1 text-sm text-[#6C6C70]">Chegirma foizi va koddan foydalanishi mumkin bo‘lgan odamlar sonini belgilang.</p>
+                  </div>
+                  <form onSubmit={handleSavePromoCode} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                    <div>
+                      <label htmlFor="promo-code-input" className="block text-xs font-medium text-[#6C6C70] mb-1.5">Promo kod</label>
+                      <input
+                        id="promo-code-input"
+                        type="text"
+                        value={promoCodeDraft}
+                        onChange={(event) => setPromoCodeDraft(event.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 32))}
+                        placeholder="OLMOS2"
+                        autoComplete="off"
+                        className="w-full min-h-[44px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 text-sm font-mono-num text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="promo-percent-input" className="block text-xs font-medium text-[#6C6C70] mb-1.5">Chegirma (%)</label>
+                      <input
+                        id="promo-percent-input"
+                        type="number"
+                        min="1"
+                        max="100"
+                        step="1"
+                        value={promoPercentDraft}
+                        onChange={(event) => setPromoPercentDraft(event.target.value)}
+                        className="w-full min-h-[44px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 text-sm font-mono-num text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="promo-limit-input" className="block text-xs font-medium text-[#6C6C70] mb-1.5">Foydalanish limiti (odam)</label>
+                      <input
+                        id="promo-limit-input"
+                        type="number"
+                        min="1"
+                        max="1000000"
+                        step="1"
+                        value={promoMaxUsesDraft}
+                        onChange={(event) => setPromoMaxUsesDraft(event.target.value)}
+                        className="w-full min-h-[44px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 text-sm font-mono-num text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={savingPromoCode || promoCodeDraft.trim().length < 3}
+                      className="sm:col-span-3 min-h-[44px] px-5 rounded-full bg-[#007AFF] hover:bg-[#0066D6] disabled:opacity-50 text-white font-semibold text-sm inline-flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {savingPromoCode && <Loader2 size={15} className="animate-spin" />}
+                      <span>Promo kodni saqlash</span>
+                    </button>
+                  </form>
+                  <div className="flex flex-col gap-2">
+                    {dashboard.promoCodes.length === 0 ? (
+                      <p className="rounded-xl bg-[#F8F9FC] px-4 py-3 text-sm text-[#6C6C70]">Hozircha promo kod yaratilmagan.</p>
+                    ) : dashboard.promoCodes.map((promo) => (
+                      <article key={promo.code} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-black/[0.06] bg-[#F8F9FC] px-4 py-3">
+                        <div>
+                          <p className="font-mono-num text-sm font-bold text-[#1C1C1E]">{promo.code} · -{promo.discountPercent}%</p>
+                          <p className="mt-0.5 text-xs text-[#6C6C70]">Ishlatildi: {promo.usedCount} / {promo.maxUses} · {promo.active ? 'Faol' : 'To‘xtatilgan'}</p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={savingPromoCode}
+                          onClick={() => togglePromoCode(promo)}
+                          className="min-h-[38px] px-3.5 rounded-full border border-black/[0.08] bg-white text-xs font-semibold text-[#1C1C1E] disabled:opacity-50 cursor-pointer"
+                        >
+                          {promo.active ? 'To‘xtatish' : 'Faollashtirish'}
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                </section>
 
                 <div className="rounded-[22px] border border-black/[0.05] bg-white p-5 space-y-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                   <div className="flex items-center gap-2.5">

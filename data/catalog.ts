@@ -29,12 +29,12 @@ export const DEFAULT_GAMES: GameItem[] = [
     inputPlaceholder: '5123456789',
     requiresServer: false,
     packs: [
-      { id: 'pubg_60', label: '60 UC', amount: 60, unit: 'UC', priceUzs: 13000, autoDelivery: true },
-      { id: 'pubg_325', label: '325 UC', amount: 325, unit: 'UC', priceUzs: 64000, autoDelivery: true },
-      { id: 'pubg_660', label: '660 UC', amount: 660, unit: 'UC', priceUzs: 128000, autoDelivery: true },
-      { id: 'pubg_1800', label: '1800 UC', amount: 1800, unit: 'UC', priceUzs: 309000, autoDelivery: true },
-      { id: 'pubg_2460', label: '2460 UC', amount: 2460, unit: 'UC', priceUzs: 435000, autoDelivery: true },
-      { id: 'pubg_elite', label: 'Elite Pass LV1-50', amount: 1, unit: 'Pass', priceUzs: 75000, autoDelivery: true },
+      { id: 'pubg_60', label: '60 UC', amount: 60, unit: 'UC', priceUzs: 11700, autoDelivery: true },
+      { id: 'pubg_325', label: '325 UC', amount: 325, unit: 'UC', priceUzs: 60900, autoDelivery: true },
+      { id: 'pubg_660', label: '660 UC', amount: 660, unit: 'UC', priceUzs: 121900, autoDelivery: true },
+      { id: 'pubg_1800', label: '1800 UC', amount: 1800, unit: 'UC', priceUzs: 293700, autoDelivery: true },
+      { id: 'pubg_2460', label: '2460 UC', amount: 2460, unit: 'UC', priceUzs: 415900, autoDelivery: true },
+      { id: 'pubg_elite', label: 'Elite Pass LV1-50', amount: 1, unit: 'Pass', priceUzs: 70000, autoDelivery: true },
     ],
   },
   {
@@ -245,7 +245,7 @@ export const DEFAULT_GAMES: GameItem[] = [
     name: 'Telegram',
     badge: '100+',
     category: 'smm',
-    subtitle: '100 so‘m dan · Obunachi, ko‘rish, reaksiya',
+    subtitle: '100 ta = 10 so‘m · Obunachi, ko‘rish, reaksiya',
     inputType: 'url',
     inputLabel: {
       uz: 'Telegram kanal yoki post havolasi',
@@ -255,10 +255,10 @@ export const DEFAULT_GAMES: GameItem[] = [
     inputPlaceholder: 'https://t.me/kanal_nomi',
     requiresServer: false,
     packs: [
-      { id: 'smm_tg_views_1k', label: '1 000 Post ko‘rish (Darhol)', amount: 1000, unit: 'Views', priceUzs: 1000, autoDelivery: true },
-      { id: 'smm_tg_react_1k', label: '1 000 Ijobiy reaksiya', amount: 1000, unit: 'React', priceUzs: 2000, autoDelivery: true },
-      { id: 'smm_tg_sub_1k', label: '1 000 Obunachi (30 kun kafolat)', amount: 1000, unit: 'Sub', priceUzs: 5000, autoDelivery: true },
-      { id: 'smm_tg_sub_5k', label: '1 000 O‘zbek obunachi (Kafolat)', amount: 1000, unit: 'Sub', priceUzs: 15000, autoDelivery: true },
+      { id: 'smm_tg_views_1k', label: '1 000 Post ko‘rish (Darhol)', amount: 1000, unit: 'Views', priceUzs: 100, autoDelivery: true },
+      { id: 'smm_tg_react_1k', label: '1 000 Ijobiy reaksiya', amount: 1000, unit: 'React', priceUzs: 100, autoDelivery: true },
+      { id: 'smm_tg_sub_1k', label: '1 000 Obunachi (30 kun kafolat)', amount: 1000, unit: 'Sub', priceUzs: 100, autoDelivery: true },
+      { id: 'smm_tg_sub_5k', label: '1 000 O‘zbek obunachi (Kafolat)', amount: 1000, unit: 'Sub', priceUzs: 100, autoDelivery: true },
     ],
   },
   {
@@ -266,7 +266,7 @@ export const DEFAULT_GAMES: GameItem[] = [
     name: 'Instagram',
     badge: '76',
     category: 'smm',
-    subtitle: '100 so‘m dan · Layk, Reels ko‘rish, obunachi',
+    subtitle: '100 ta = 10 so‘m · Layk, Reels ko‘rish, obunachi',
     inputType: 'url',
     inputLabel: {
       uz: 'Instagram profil yoki post havolasi',
@@ -276,10 +276,10 @@ export const DEFAULT_GAMES: GameItem[] = [
     inputPlaceholder: 'https://instagram.com/username',
     requiresServer: false,
     packs: [
-      { id: 'smm_ig_like_1k', label: '1 000 Layk (Tezkor · No Drop)', amount: 1000, unit: 'Likes', priceUzs: 5000, autoDelivery: true },
-      { id: 'smm_ig_reels_10k', label: '10 000 Reels ko‘rish', amount: 10000, unit: 'Views', priceUzs: 3000, autoDelivery: true },
-      { id: 'smm_ig_sub_1k', label: '1 000 Obunachi', amount: 1000, unit: 'Followers', priceUzs: 15000, autoDelivery: true },
-      { id: 'smm_ig_sub_5k', label: '1 000 Real Obunachi (30D Refill)', amount: 1000, unit: 'Followers', priceUzs: 59000, autoDelivery: true },
+      { id: 'smm_ig_like_1k', label: '1 000 Layk (Tezkor · No Drop)', amount: 1000, unit: 'Likes', priceUzs: 100, autoDelivery: true },
+      { id: 'smm_ig_reels_10k', label: '10 000 Reels ko‘rish', amount: 10000, unit: 'Views', priceUzs: 1000, autoDelivery: true },
+      { id: 'smm_ig_sub_1k', label: '1 000 Obunachi', amount: 1000, unit: 'Followers', priceUzs: 100, autoDelivery: true },
+      { id: 'smm_ig_sub_5k', label: '1 000 Real Obunachi (30D Refill)', amount: 1000, unit: 'Followers', priceUzs: 100, autoDelivery: true },
     ],
   },
   {
@@ -287,7 +287,7 @@ export const DEFAULT_GAMES: GameItem[] = [
     name: 'YouTube',
     badge: '298',
     category: 'smm',
-    subtitle: '2 000 so‘m dan · Ko‘rish, layk, obunachi',
+    subtitle: '100 ta = 10 so‘m · Ko‘rish, layk, obunachi',
     inputType: 'url',
     inputLabel: {
       uz: 'YouTube video yoki kanal havolasi',
@@ -297,9 +297,9 @@ export const DEFAULT_GAMES: GameItem[] = [
     inputPlaceholder: 'https://youtube.com/watch?v=...',
     requiresServer: false,
     packs: [
-      { id: 'smm_yt_views_1k', label: '1 000 Ko‘rish (30D Refill)', amount: 1000, unit: 'Views', priceUzs: 13000, autoDelivery: true },
-      { id: 'smm_yt_like_500', label: '500 Real Layk', amount: 500, unit: 'Likes', priceUzs: 20000, autoDelivery: true },
-      { id: 'smm_yt_sub_1k', label: '500 Kanal Obunachi', amount: 500, unit: 'Sub', priceUzs: 49000, autoDelivery: true },
+      { id: 'smm_yt_views_1k', label: '1 000 Ko‘rish (30D Refill)', amount: 1000, unit: 'Views', priceUzs: 100, autoDelivery: true },
+      { id: 'smm_yt_like_500', label: '500 Real Layk', amount: 500, unit: 'Likes', priceUzs: 50, autoDelivery: true },
+      { id: 'smm_yt_sub_1k', label: '500 Kanal Obunachi', amount: 500, unit: 'Sub', priceUzs: 50, autoDelivery: true },
     ],
   },
   {
@@ -307,7 +307,7 @@ export const DEFAULT_GAMES: GameItem[] = [
     name: 'TikTok',
     badge: '67',
     category: 'smm',
-    subtitle: '700 so‘m dan · Ko‘rish, layk, obunachi',
+    subtitle: '100 ta = 10 so‘m · Ko‘rish, layk, obunachi',
     inputType: 'url',
     inputLabel: {
       uz: 'TikTok video yoki profil havolasi',
@@ -317,9 +317,9 @@ export const DEFAULT_GAMES: GameItem[] = [
     inputPlaceholder: 'https://tiktok.com/@username',
     requiresServer: false,
     packs: [
-      { id: 'smm_tt_views_10k', label: '10 000 Video ko‘rish', amount: 10000, unit: 'Views', priceUzs: 9000, autoDelivery: true },
-      { id: 'smm_tt_like_1k', label: '1 000 Real Layk', amount: 1000, unit: 'Likes', priceUzs: 39000, autoDelivery: true },
-      { id: 'smm_tt_sub_1k', label: '1 000 Real Obunachi', amount: 1000, unit: 'Followers', priceUzs: 49000, autoDelivery: true },
+      { id: 'smm_tt_views_10k', label: '10 000 Video ko‘rish', amount: 10000, unit: 'Views', priceUzs: 1000, autoDelivery: true },
+      { id: 'smm_tt_like_1k', label: '1 000 Real Layk', amount: 1000, unit: 'Likes', priceUzs: 100, autoDelivery: true },
+      { id: 'smm_tt_sub_1k', label: '1 000 Real Obunachi', amount: 1000, unit: 'Followers', priceUzs: 100, autoDelivery: true },
     ],
   },
 ];

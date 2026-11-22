@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 import { getStore } from '@netlify/blobs';
-import { desc, eq, like, sql } from 'drizzle-orm';
-import { getDatabase, olmosAppState, olmosOrders, olmosRateLimits } from './db.js';
-import { PAYMENT_CARD, resolveCatalogPack } from './_catalog-map.js';
+import { and, desc, eq, like, lt, sql } from 'drizzle-orm';
+import { getDatabase, olmosAppState, olmosOrders, olmosPromoCodes, olmosRateLimits } from './db.js';
+import { CATALOG, PAYMENT_CARD, resolveCatalogPack } from './_catalog-map.js';
 
 const SORA_BASE_URL = 'https://sorapay.xuss.us/reseller/v1';
 const MAX_RECEIPT_BYTES = 3 * 1024 * 1024; // Keep base64 JSON payload below Vercel's 4.5 MB function limit
@@ -19,7 +19,9 @@ const memoryTelegramCustomers = new Map();
 const memoryRateLimits = new Map();
 const memoryServiceMedia = new Map();
 const memoryAdminMessageLogs = [];
+const memoryPromoCodes = new Map();
 let memoryCardSettings = null;
+let memoryStoreSettings = null;
 const soraCache = new Map();
 let telegramWebhookConfiguredAt = 0;
 
@@ -45,6 +47,95 @@ async function setAppStateValue(key, value) {
       set: { value, updatedAt: new Date() },
     });
   return value;
+}
+
+const DEFAULT_DISABLED_GAME_IDS = ['tg-account', 'tg-giveaway'];
+const validGameIds = new Set(CATALOG.map((game) => game.id));
+
+export async function getStoreSettings() {
+  const database = getDatabase();
+  const stored = database ? await getAppStateValue('store-settings') : memoryStoreSettings;
+  const disabledGameIds = Array.isArray(stored?.disabledGameIds)
+    ? stored.disabledGameIds.filter((id) => validGameIds.has(id))
+    : DEFAULT_DISABLED_GAME_IDS;
+  return { disabledGameIds: [...new Set(disabledGameIds)] };
+}
+
+export async function saveStoreSettings(value) {
+  if (!value || !Array.isArray(value.disabledGameIds)) {
+    throw new Error('Invalid store settings');
+  }
+  const settings = {
+    disabledGameIds: [...new Set(value.disabledGameIds.filter((id) => validGameIds.has(id)))],
+  };
+  const database = getDatabase();
+  if (database) await setAppStateValue('store-settings', settings);
+  else memoryStoreSettings = settings;
+  return settings;
+}
+
+function normalizePromoCode(rawCode) {
+  const code = String(rawCode || '').trim().toUpperCase();
+  return /^[A-Z0-9_-]{3,32}$/.test(code) ? code : '';
+}
+
+export async function getPromoCodes() {
+  const database = getDatabase();
+  if (database) {
+    return database.select().from(olmosPromoCodes).orderBy(desc(olmosPromoCodes.updatedAt)).limit(100);
+  }
+  return [...memoryPromoCodes.values()].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 100);
+}
+
+export async function getPromoCode(rawCode) {
+  const code = normalizePromoCode(rawCode);
+  if (!code) return null;
+  const database = getDatabase();
+  if (database) {
+    const [promo] = await database.select().from(olmosPromoCodes).where(eq(olmosPromoCodes.code, code)).limit(1);
+    return promo || null;
+  }
+  return memoryPromoCodes.get(code) || null;
+}
+
+export async function validatePromoCode(rawCode) {
+  const promo = await getPromoCode(rawCode);
+  if (!promo || !promo.active || promo.usedCount >= promo.maxUses) {
+    return { valid: false };
+  }
+  return { valid: true, code: promo.code, discountPercent: promo.discountPercent };
+}
+
+export async function savePromoCode({ code: rawCode, discountPercent, maxUses, active = true } = {}) {
+  const code = normalizePromoCode(rawCode);
+  const percent = Number(discountPercent);
+  const limit = Number(maxUses);
+  if (!code || !Number.isInteger(percent) || percent < 1 || percent > 100 || !Number.isInteger(limit) || limit < 1 || limit > 1_000_000) {
+    throw new Error('Invalid promo code settings');
+  }
+  const values = {
+    code,
+    discountPercent: percent,
+    maxUses: limit,
+    active: Boolean(active),
+    updatedAt: new Date(),
+  };
+  const database = getDatabase();
+  if (database) {
+    const [promo] = await database
+      .insert(olmosPromoCodes)
+      .values(values)
+      .onConflictDoUpdate({
+        target: olmosPromoCodes.code,
+        set: { discountPercent: percent, maxUses: limit, active: Boolean(active), updatedAt: values.updatedAt },
+      })
+      .returning();
+    return promo;
+  }
+  const previous = memoryPromoCodes.get(code);
+  const promo = { ...values, usedCount: previous?.usedCount || 0 };
+  memoryPromoCodes.set(code, promo);
+  return promo;
 }
 
 export function getTelegramWebhookSecret() {
@@ -372,27 +463,59 @@ function getOrdersBlobStore() {
   return null;
 }
 
-export async function saveOrder(order) {
+export async function saveOrder(order, { promoCode = '' } = {}) {
   const database = getDatabase();
   if (database) {
-    await database
-      .insert(olmosOrders)
-      .values({
-        ref: order.ref,
-        tgUserId: order.tgUserId ? String(order.tgUserId) : null,
-        orderData: order,
-        createdAt: Number(order.createdAt || Date.now()),
-        updatedAt: Number(order.updatedAt || Date.now()),
-      })
-      .onConflictDoUpdate({
-        target: olmosOrders.ref,
-        set: {
+    const persistOrder = async (connection) => {
+      await connection
+        .insert(olmosOrders)
+        .values({
+          ref: order.ref,
           tgUserId: order.tgUserId ? String(order.tgUserId) : null,
           orderData: order,
+          createdAt: Number(order.createdAt || Date.now()),
           updatedAt: Number(order.updatedAt || Date.now()),
-        },
+        })
+        .onConflictDoUpdate({
+          target: olmosOrders.ref,
+          set: {
+            tgUserId: order.tgUserId ? String(order.tgUserId) : null,
+            orderData: order,
+            updatedAt: Number(order.updatedAt || Date.now()),
+          },
+        });
+    };
+
+    if (promoCode) {
+      const code = normalizePromoCode(promoCode);
+      await database.transaction(async (transaction) => {
+        const [claimed] = await transaction
+          .update(olmosPromoCodes)
+          .set({ usedCount: sql`${olmosPromoCodes.usedCount} + 1`, updatedAt: new Date() })
+          .where(and(
+            eq(olmosPromoCodes.code, code),
+            eq(olmosPromoCodes.active, true),
+            eq(olmosPromoCodes.discountPercent, Number(order.promoDiscountPercent)),
+            lt(olmosPromoCodes.usedCount, olmosPromoCodes.maxUses)
+          ))
+          .returning({ code: olmosPromoCodes.code });
+        if (!claimed) throw new Error('PROMO_CODE_UNAVAILABLE');
+        await persistOrder(transaction);
       });
+    } else {
+      await persistOrder(database);
+    }
     return order;
+  }
+
+  if (promoCode) {
+    const code = normalizePromoCode(promoCode);
+    const promo = memoryPromoCodes.get(code);
+    if (!promo || !promo.active || promo.usedCount >= promo.maxUses || promo.discountPercent !== Number(order.promoDiscountPercent)) {
+      throw new Error('PROMO_CODE_UNAVAILABLE');
+    }
+    promo.usedCount += 1;
+    promo.updatedAt = new Date();
   }
 
   const store = getOrdersBlobStore();
@@ -495,6 +618,45 @@ export async function listAllOrders(limit = 60) {
   }
   const orders = await Promise.all(refs.slice(0, limit).map((ref) => getOrder(ref)));
   return orders.filter(Boolean);
+}
+
+export async function getOrderFinanceStats() {
+  const database = getDatabase();
+  const orders = database
+    ? (await database.select({ orderData: olmosOrders.orderData }).from(olmosOrders)).map((row) => row.orderData).filter(Boolean)
+    : await listAllOrders(10_000);
+  const stats = {
+    totalOrders: orders.length,
+    completedOrders: 0,
+    pendingOrders: 0,
+    processingOrders: 0,
+    canceledOrders: 0,
+    totalRevenueUzs: 0,
+    totalExpenseUzs: 0,
+    totalProfitUzs: 0,
+    unknownExpenseOrders: 0,
+    financialOrderCount: 0,
+  };
+
+  for (const order of orders) {
+    if (order.status === 'completed') stats.completedOrders += 1;
+    else if (order.status === 'canceled') stats.canceledOrders += 1;
+    else if (order.status === 'processing') stats.processingOrders += 1;
+    else stats.pendingOrders += 1;
+
+    if (order.status !== 'completed' && order.status !== 'processing') continue;
+    stats.financialOrderCount += 1;
+    stats.totalRevenueUzs += Math.max(0, Math.round(Number(order.priceUzs) || 0));
+
+    const charged = order.charged == null ? NaN : Number(order.charged);
+    const expected = order.expectedSoraPrice == null ? NaN : Number(order.expectedSoraPrice);
+    const expense = Number.isFinite(charged) ? charged : expected;
+    if (Number.isFinite(expense) && expense >= 0) stats.totalExpenseUzs += Math.round(expense);
+    else stats.unknownExpenseOrders += 1;
+  }
+
+  stats.totalProfitUzs = stats.totalRevenueUzs - stats.totalExpenseUzs;
+  return stats;
 }
 
 export async function rememberTelegramCustomer(user) {

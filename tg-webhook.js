@@ -336,7 +336,7 @@ export async function executeSoraApproval({
             error: `Tanlangan paket (${stored?.packLabel || effectiveOrd.item}) hozirda Sora omborida mavjud emas.`,
           };
         }
-        if (stored?.priceUzs && Number(liveItem.your_price) > Number(stored.priceUzs)) {
+        if (stored?.priceUzs && stored?.gameId !== 'pubg' && effType !== 'smm' && Number(liveItem.your_price) > Number(stored.priceUzs)) {
           return {
             ok: false,
             code: 'wholesale_above_retail',
@@ -451,7 +451,10 @@ export async function processTelegramUpdate(update) {
         parse_mode: 'HTML',
         text: lines.join('\n'),
         reply_markup: {
-          inline_keyboard: [[{ text: '🛒 Do‘konni ochish', web_app: { url: webAppUrl } }]],
+          inline_keyboard: [
+            [{ text: '🛒 Do‘konni ochish', web_app: { url: webAppUrl } }],
+            [{ text: '💬 Yordam: @zzaaxxzz09', url: 'https://t.me/zzaaxxzz09' }],
+          ],
         },
       });
       return;
@@ -477,7 +480,10 @@ export async function processTelegramUpdate(update) {
           .filter(Boolean)
           .join('\n'),
         reply_markup: {
-          inline_keyboard: [[{ text: '🛒 Do‘konni ochish', web_app: { url: webAppUrl } }]],
+          inline_keyboard: [
+            [{ text: '🛒 Do‘konni ochish', web_app: { url: webAppUrl } }],
+            [{ text: '💬 Yordam: @zzaaxxzz09', url: 'https://t.me/zzaaxxzz09' }],
+          ],
         },
       });
       return;
@@ -511,7 +517,10 @@ export async function processTelegramUpdate(update) {
         parse_mode: 'HTML',
         text: `🛒 Buyurtma berish uchun <b>Do‘konni ochish</b> tugmasidan foydalaning:`,
         reply_markup: {
-          inline_keyboard: [[{ text: '🛒 Do‘konni ochish', web_app: { url: webAppUrl } }]],
+          inline_keyboard: [
+            [{ text: '🛒 Do‘konni ochish', web_app: { url: webAppUrl } }],
+            [{ text: '💬 Yordam: @zzaaxxzz09', url: 'https://t.me/zzaaxxzz09' }],
+          ],
         },
       });
       return;

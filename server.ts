@@ -6,6 +6,7 @@ import { createServer as createViteServer } from 'vite';
 import { handler as soraHandler } from './sora.js';
 import { handler as orderHandler } from './order.js';
 import { handler as orderStatusHandler } from './order-status.js';
+import { handler as promoCodeHandler } from './promo-code.js';
 import { handler as tgWebhookHandler, processTelegramUpdate } from './tg-webhook.js';
 import { handler as adminMediaHandler } from './admin-media.js';
 import { handler as adminPanelHandler } from './admin-panel.js';
@@ -169,6 +170,11 @@ async function startTelegramBotRunner() {
     console.log(`[TG Bot] @${runtimeState.botUsername || 'bot'} active in live polling mode`);
 
     let offset = 0;
+    let consecutiveFailures = 0;
+    const waitBeforeRetry = () => new Promise((resolve) => {
+      const delayMs = Math.min(15_000, 750 * 2 ** Math.min(consecutiveFailures, 5));
+      setTimeout(resolve, delayMs);
+    });
     const pollLoop = async () => {
       while (pollingActive) {
         try {
@@ -178,6 +184,9 @@ async function startTelegramBotRunner() {
             allowed_updates: ['message', 'callback_query'],
           });
           if (res?.ok && Array.isArray(res.result)) {
+            consecutiveFailures = 0;
+            runtimeState.botConnected = true;
+            runtimeState.botError = null;
             for (const update of res.result) {
               if (typeof update.update_id === 'number' && update.update_id >= offset) {
                 offset = update.update_id + 1;
@@ -188,16 +197,33 @@ async function startTelegramBotRunner() {
                 console.error('[TG Update Error]', err instanceof Error ? err.message : 'unknown');
               }
             }
-          } else if (res?.error_code === 401 || res?.description === 'Unauthorized') {
+            continue;
+          }
+
+          if (res?.error_code === 401 || res?.description === 'Unauthorized') {
             runtimeState.botConnected = false;
             runtimeState.botMode = 'off';
             runtimeState.botError = res.description || 'Telegram bot tokeni tasdiqlanmadi';
             pollingActive = false;
-          } else {
-            await new Promise((r) => setTimeout(r, 3000));
+            break;
           }
-        } catch {
-          await new Promise((r) => setTimeout(r, 3000));
+
+          if (res?.error_code === 409) {
+            runtimeState.botConnected = false;
+            runtimeState.botMode = 'off';
+            runtimeState.botError = 'Telegram polling boshqa jarayon yoki webhook bilan to‘qnashdi. Faqat bitta bot nusxasini ishlating.';
+            console.error(`[TG Bot Polling Conflict] ${res.description || 'HTTP 409'}`);
+            pollingActive = false;
+            break;
+          }
+
+          consecutiveFailures += 1;
+          runtimeState.botError = res?.description || 'Telegram polling javobi noto‘g‘ri';
+          await waitBeforeRetry();
+        } catch (err) {
+          consecutiveFailures += 1;
+          runtimeState.botError = err instanceof Error ? err.message : 'Telegram polling uzildi';
+          await waitBeforeRetry();
         }
       }
     };
@@ -246,6 +272,7 @@ async function startServer() {
   app.all('/.netlify/functions/sora', adaptNetlify(soraHandler));
   app.all('/.netlify/functions/order', adaptNetlify(orderHandler));
   app.all('/.netlify/functions/order-status', adaptNetlify(orderStatusHandler));
+  app.all('/.netlify/functions/promo-code', adaptNetlify(promoCodeHandler));
   app.all('/.netlify/functions/tg-webhook', adaptNetlify(tgWebhookHandler));
   app.all('/.netlify/functions/admin-media', adaptNetlify(adminMediaHandler));
   app.all('/.netlify/functions/admin-panel', adaptNetlify(adminPanelHandler));

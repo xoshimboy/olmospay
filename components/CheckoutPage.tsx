@@ -41,6 +41,10 @@ export function CheckoutPage({
   const [receiptDataUrl, setReceiptDataUrl] = useState<string>('');
   const [fileName, setFileName] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [promoCodeInput, setPromoCodeInput] = useState('');
+  const [appliedPromo, setAppliedPromo] = useState<{ code: string; discountPercent: number } | null>(null);
+  const [promoMessage, setPromoMessage] = useState('');
+  const [checkingPromo, setCheckingPromo] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submittedRef, setSubmittedRef] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -52,6 +56,10 @@ export function CheckoutPage({
       category: game.category,
       priceUzs: pack.priceUzs,
     });
+  const promoDiscountUzs = appliedPromo
+    ? Math.round((pack.priceUzs * appliedPromo.discountPercent) / 100)
+    : 0;
+  const finalPriceUzs = Math.max(1, pack.priceUzs - promoDiscountUzs);
 
   useEffect(() => {
     setSecondsLeft(CHECKOUT_SECONDS);
@@ -97,9 +105,52 @@ export function CheckoutPage({
     }
   }
 
+  async function applyPromoCode() {
+    const code = promoCodeInput.trim().toUpperCase();
+    if (code.length < 3) {
+      setAppliedPromo(null);
+      setPromoMessage('Promo kodni to‘liq kiriting.');
+      return;
+    }
+
+    setCheckingPromo(true);
+    setPromoMessage('');
+    try {
+      const response = await fetch('/.netlify/functions/promo-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok || !data.valid || !Number.isInteger(data.discountPercent)) {
+        setAppliedPromo(null);
+        setPromoMessage(data?.error || 'Promo kod topilmadi yoki faol emas.');
+        triggerHaptic('error');
+        return;
+      }
+
+      setPromoCodeInput(data.code);
+      setAppliedPromo({ code: data.code, discountPercent: data.discountPercent });
+      setPromoMessage(`Promo kod qo‘llandi: -${data.discountPercent}%`);
+      triggerHaptic('success');
+    } catch {
+      setAppliedPromo(null);
+      setPromoMessage(t.errNetwork);
+      triggerHaptic('error');
+    } finally {
+      setCheckingPromo(false);
+    }
+  }
+
   async function sendOrder() {
     if (submitting) return;
     setErrorMsg('');
+
+    if (promoCodeInput.trim() && (!appliedPromo || appliedPromo.code !== promoCodeInput.trim().toUpperCase())) {
+      setPromoMessage('Avval promo kodni tekshirib, qo‘llang.');
+      triggerHaptic('error');
+      return;
+    }
 
     if (timerExpired) {
       setErrorMsg(t.errTimerExpired);
@@ -121,7 +172,9 @@ export function CheckoutPage({
         body: JSON.stringify({
           gameId: game.id,
           packId: pack.id,
-          price: pack.priceUzs,
+          quantity: game.category === 'smm' ? pack.amount : undefined,
+          price: finalPriceUzs,
+          promoCode: appliedPromo?.code || undefined,
           playerID,
           server: serverID,
           photo: receiptDataUrl,
@@ -240,6 +293,7 @@ export function CheckoutPage({
           <span className="text-[var(--ink-muted)]">{t.selectedPack}</span>
           <span className="font-semibold text-[var(--ink)]">
             {game.name} · {pack.label}
+            {game.category === 'smm' && <span className="block text-xs font-normal text-[var(--ink-muted)]">Miqdor: {pack.amount.toLocaleString('uz-UZ')} ta</span>}
           </span>
         </div>
         <div className="flex items-center justify-between gap-4 text-sm">
@@ -255,13 +309,62 @@ export function CheckoutPage({
             🪙 +{coinsReward} {t.coinsUnit}
           </span>
         </div>
+        {appliedPromo && (
+          <>
+            <div className="flex items-center justify-between gap-4 text-sm">
+              <span className="text-[var(--ink-muted)]">Asl narx</span>
+              <span className="font-mono-num text-[var(--ink)]">{formatUzs(pack.priceUzs, t.uzs)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4 text-sm">
+              <span className="text-emerald-600 dark:text-emerald-400">{appliedPromo.code} · -{appliedPromo.discountPercent}%</span>
+              <span className="font-mono-num font-semibold text-emerald-600 dark:text-emerald-400">-{formatUzs(promoDiscountUzs, t.uzs)}</span>
+            </div>
+          </>
+        )}
         <div className="pt-3 border-t border-[var(--line)] flex items-center justify-between gap-4">
           <span className="text-sm font-medium text-[var(--ink-muted)]">{t.totalLabel}</span>
           <span className="font-mono-num text-xl font-bold text-[var(--gold-2)] dark:text-[#E5B94C]">
-            {formatUzs(pack.priceUzs, t.uzs)}
+            {formatUzs(finalPriceUzs, t.uzs)}
           </span>
         </div>
       </div>
+
+      <section aria-labelledby="checkout-promo-title" className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 space-y-3">
+        <div>
+          <h3 id="checkout-promo-title" className="font-display text-base font-semibold text-[var(--ink)]">Promo kod</h3>
+          <p className="mt-1 text-xs text-[var(--ink-muted)]">Admin bergan chegirma kodini kiriting.</p>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            id="checkout-promo-code"
+            type="text"
+            value={promoCodeInput}
+            onChange={(event) => {
+              setPromoCodeInput(event.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 32));
+              setAppliedPromo(null);
+              setPromoMessage('');
+            }}
+            disabled={checkingPromo || submitting}
+            placeholder="OLMOS2"
+            autoComplete="off"
+            aria-label="Promo kod"
+            className="min-h-[46px] min-w-0 flex-1 rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-4 text-sm font-mono-num font-semibold text-[var(--ink)] focus:outline-none focus:ring-2 focus:ring-[#007AFF]/25"
+          />
+          <button
+            type="button"
+            onClick={applyPromoCode}
+            disabled={checkingPromo || submitting || !promoCodeInput.trim()}
+            className="min-h-[46px] rounded-xl border border-[#007AFF]/30 px-5 text-sm font-semibold text-[#007AFF] disabled:opacity-50 dark:text-[#E5B94C] dark:border-[#E5B94C]/30"
+          >
+            {checkingPromo ? 'Tekshirilmoqda…' : 'Qo‘llash'}
+          </button>
+        </div>
+        {promoMessage && (
+          <p role="status" aria-live="polite" className={`text-xs ${appliedPromo ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+            {promoMessage}
+          </p>
+        )}
+      </section>
 
       {/* Card Transfer */}
       <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 space-y-3">

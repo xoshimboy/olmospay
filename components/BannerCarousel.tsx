@@ -86,16 +86,16 @@ export function BannerCarousel({ t, customMedia = {}, onSelectGame }: BannerCaro
               referrerPolicy="no-referrer"
               onError={() => setFailedImages((prev) => ({ ...prev, [activeIndex]: true }))}
               initial={{ opacity: 0, scale: 1.04 }}
-              animate={{ opacity: 0.38, scale: 1 }}
+              animate={{ opacity: 0.72, scale: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-              className="absolute inset-0 h-full w-full object-cover object-center"
+              className="absolute inset-0 h-full w-full object-contain object-center"
             />
           </AnimatePresence>
         )}
 
         {/* Translucent Apple iOS Liquid Glass Foreground Diffusion */}
-        <div className="absolute inset-0 bg-white/42 dark:bg-[#0D1017]/58 backdrop-blur-2xl" />
+        <div className="absolute inset-0 bg-white/22 dark:bg-[#0D1017]/28 backdrop-blur-sm" />
       </div>
 
       {/* Foreground iOS Content (compact & crisp) */}
@@ -110,7 +110,7 @@ export function BannerCarousel({ t, customMedia = {}, onSelectGame }: BannerCaro
             <p className="text-[11px] font-semibold tracking-wide text-[#007AFF] dark:text-[#E5B94C]">
               {current.kicker}
             </p>
-            <h2 className="mt-1 font-display text-[16px] sm:text-[21px] font-bold tracking-tight text-[#1C1C1E] dark:text-white leading-snug [text-wrap:balance]">
+            <h2 className="mt-1 font-display text-[14px] sm:text-[18px] font-bold tracking-tight text-[#1C1C1E] dark:text-white leading-snug [text-wrap:balance]">
               {current.title}
             </h2>
             <p className="mt-1 text-xs sm:text-[13px] text-[#48484A] dark:text-zinc-300 max-w-lg leading-snug line-clamp-2">
@@ -151,7 +151,7 @@ export function BannerCarousel({ t, customMedia = {}, onSelectGame }: BannerCaro
 
         {/* Desktop Visual Artwork / Animated Apple iOS Squircle Preview */}
         {customImgSrc && !imgFailed ? (
-          <div className="hidden sm:block shrink-0 w-36 md:w-44 lg:w-48 aspect-[4/3] rounded-[18px] overflow-hidden shadow-[0_8px_22px_rgba(15,23,42,0.12)] bg-white/75 dark:bg-black/30">
+          <div className="hidden sm:block shrink-0 w-32 md:w-40 lg:w-44 aspect-video rounded-[18px] overflow-hidden shadow-[0_8px_22px_rgba(15,23,42,0.12)] bg-black/5 dark:bg-black/30">
             <AnimatePresence mode="wait">
               <motion.img
                 key={customImgSrc}
@@ -163,7 +163,7 @@ export function BannerCarousel({ t, customMedia = {}, onSelectGame }: BannerCaro
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.98 }}
                 transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
-                className="h-full w-full object-cover object-center"
+                className="h-full w-full object-contain object-center"
               />
             </AnimatePresence>
           </div>

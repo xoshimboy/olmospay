@@ -4,14 +4,19 @@ import {
   ensureTelegramWebhook,
   escapeHtml,
   getCardSettings,
+  getStoreSettings,
   getCorsHeaders,
   getOrder,
   getAdminMessageLogs,
+  getOrderFinanceStats,
+  getPromoCodes,
   jsonResponse,
   listAllOrders,
   listTelegramCustomerIds,
   recordAdminMessageLog,
   saveCardSettings,
+  savePromoCode,
+  saveStoreSettings,
   soraRequest,
   telegramApi,
   updateOrder,
@@ -69,7 +74,7 @@ export async function handler(event) {
   }
 
   if (event.httpMethod === 'GET') {
-    const [orders, card, soraMe, soraSvc, tgMe, customerIds, messageLogs] = await Promise.all([
+    const [orders, card, soraMe, soraSvc, tgMe, customerIds, messageLogs, storeSettings, promoCodes, financeStats] = await Promise.all([
       listAllOrders(60),
       getCardSettings(),
       soraRequest('/me', { method: 'GET' }),
@@ -77,27 +82,11 @@ export async function handler(event) {
       process.env.TG_BOT_TOKEN ? telegramApi('getMe', {}) : Promise.resolve(null),
       listTelegramCustomerIds(),
       getAdminMessageLogs(30),
+      getStoreSettings(),
+      getPromoCodes(),
+      getOrderFinanceStats(),
     ]);
     const webhook = await ensureTelegramWebhook();
-
-    let completedOrders = 0;
-    let pendingOrders = 0;
-    let processingOrders = 0;
-    let canceledOrders = 0;
-    let totalRevenueUzs = 0;
-
-    for (const o of orders) {
-      if (o.status === 'completed') {
-        completedOrders += 1;
-        totalRevenueUzs += Number(o.priceUzs || 0);
-      } else if (o.status === 'canceled') {
-        canceledOrders += 1;
-      } else if (o.status === 'processing') {
-        processingOrders += 1;
-      } else {
-        pendingOrders += 1;
-      }
-    }
 
     return jsonResponse(
       200,
@@ -105,18 +94,15 @@ export async function handler(event) {
         ok: true,
         authMode: auth.mode,
         stats: {
-          totalOrders: orders.length,
-          completedOrders,
-          pendingOrders,
-          processingOrders,
-          canceledOrders,
-          totalRevenueUzs,
+          ...financeStats,
           uniqueCustomers: customerIds.length,
           storeServicesCount: CATALOG.length,
         },
         orders,
         messageLogs,
         card,
+        storeSettings,
+        promoCodes,
         sora: {
           ok: soraMe.ok,
           balance: soraMe.ok ? soraMe.data?.balance : null,
@@ -143,6 +129,25 @@ export async function handler(event) {
 
   if (event.httpMethod === 'POST') {
     const action = String(body.action || '').trim();
+
+    if (action === 'save-promo-code') {
+      try {
+        const promoCode = await savePromoCode(body.promoCode || {});
+        const promoCodes = await getPromoCodes();
+        return jsonResponse(200, { ok: true, promoCode, promoCodes }, origin);
+      } catch {
+        return jsonResponse(400, { ok: false, error: 'Promo kod, foiz va foydalanish limitini tekshiring' }, origin);
+      }
+    }
+
+    if (action === 'save-store-settings') {
+      try {
+        const storeSettings = await saveStoreSettings(body.storeSettings);
+        return jsonResponse(200, { ok: true, storeSettings }, origin);
+      } catch {
+        return jsonResponse(400, { ok: false, error: 'Do‘kon xizmatlari sozlamasi noto‘g‘ri' }, origin);
+      }
+    }
 
     if (action === 'save-card') {
       try {
@@ -253,6 +258,14 @@ export async function handler(event) {
     const order = await getOrder(ref);
     if (!order) {
       return jsonResponse(404, { ok: false, error: 'Buyurtma topilmadi' }, origin);
+    }
+
+    if (action === 'archive-order') {
+      if (order.status !== 'canceled') {
+        return jsonResponse(409, { ok: false, error: 'Faqat bekor qilingan buyurtmani yashirish mumkin' }, origin);
+      }
+      const updated = await updateOrder(ref, { archivedAt: Date.now() });
+      return jsonResponse(200, { ok: true, order: updated }, origin);
     }
 
     if (action === 'reject-order') {

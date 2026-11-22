@@ -32,7 +32,14 @@ import type {
   ThemeMode,
   TgUser,
 } from './types';
-import { calculatePackCoins, formatUzs, validatePlayerInput } from './utils/format';
+import {
+  calculatePackCoins,
+  calculateSmmPrice,
+  formatUzs,
+  MAX_SMM_QUANTITY,
+  MIN_SMM_QUANTITY,
+  validatePlayerInput,
+} from './utils/format';
 import { getTg, initTelegramApp, triggerHaptic } from './utils/telegram';
 
 const AdminPanelPage = lazy(() =>
@@ -105,7 +112,7 @@ export default function App() {
 
   const [theme, setThemeState] = useState<ThemeMode>(() => {
     const saved = typeof window !== 'undefined' ? window.localStorage.getItem(THEME_STORAGE_KEY) : null;
-    return saved === 'dark' ? 'dark' : 'light';
+    return saved === 'light' ? 'light' : 'dark';
   });
 
   const [games, setGames] = useState<GameItem[]>(() => {
@@ -115,6 +122,13 @@ export default function App() {
   const [customMedia, setCustomMedia] = useState<Record<string, string>>(() =>
     readCacheJson<Record<string, string>>(MEDIA_CACHE_KEY, {})
   );
+  const [storeSettings, setStoreSettings] = useState<{ disabledGameIds: string[] }>({
+    disabledGameIds: ['tg-account', 'tg-giveaway'],
+  });
+  const [homeEntranceClass] = useState(() => {
+    const variants = ['store-enter--rise', 'store-enter--soft', 'store-enter--scale'];
+    return variants[Math.floor(Math.random() * variants.length)];
+  });
   const [cardInfo, setCardInfo] = useState<CardInfo>(() =>
     readCacheJson<CardInfo>(CARD_CACHE_KEY, CARD_INFO)
   );
@@ -124,6 +138,7 @@ export default function App() {
   const [category, setCategory] = useState<GameCategory>('all');
   const [selectedGameId, setSelectedGameId] = useState<string>('pubg');
   const [selectedPackId, setSelectedPackId] = useState<string>('');
+  const [smmQuantity, setSmmQuantity] = useState<string>(String(MIN_SMM_QUANTITY));
   const [playerID, setPlayerID] = useState<string>('');
   const [serverID, setServerID] = useState<string>('');
   const [gameFormError, setGameFormError] = useState<string>('');
@@ -216,7 +231,7 @@ export default function App() {
     (async () => {
       try {
         const [catRes, mediaRes] = await Promise.all([
-          fetch('/.netlify/functions/sora?path=public-catalog'),
+          fetch('/.netlify/functions/sora?path=public-catalog', { cache: 'no-store' }),
           fetch('/.netlify/functions/admin-media'),
         ]);
         if (catRes.ok) {
@@ -224,6 +239,9 @@ export default function App() {
           if (active && Array.isArray(data?.games) && data.games.length > 0) {
             setGames(data.games);
             writeCacheJson(CATALOG_CACHE_KEY, data.games);
+          }
+          if (active && Array.isArray(data?.storeSettings?.disabledGameIds)) {
+            setStoreSettings({ disabledGameIds: data.storeSettings.disabledGameIds });
           }
         }
         if (mediaRes.ok) {
@@ -379,15 +397,17 @@ export default function App() {
 
   const openGame = useCallback(
     (gameId: string) => {
+      if (storeSettings.disabledGameIds.includes(gameId)) return;
       const target = games.find((g) => g.id === gameId) || games[0];
       setSelectedGameId(target.id);
       setSelectedPackId(target.packs[0]?.id || '');
+      setSmmQuantity(String(MIN_SMM_QUANTITY));
       setPlayerID('');
       setServerID('');
       setGameFormError('');
       navPage('p-game');
     },
-    [games, navPage]
+    [games, navPage, storeSettings.disabledGameIds]
   );
 
   const selectedGame = useMemo(
@@ -395,10 +415,24 @@ export default function App() {
     [games, selectedGameId]
   );
 
-  const selectedPack = useMemo(
-    () => selectedGame.packs.find((p) => p.id === selectedPackId) || null,
-    [selectedGame, selectedPackId]
-  );
+  const smmQuantityNumber = Number(smmQuantity);
+  const isSmmQuantityValid =
+    Number.isSafeInteger(smmQuantityNumber) &&
+    smmQuantityNumber >= MIN_SMM_QUANTITY &&
+    smmQuantityNumber <= MAX_SMM_QUANTITY;
+
+  const selectedPack = useMemo(() => {
+    const pack = selectedGame.packs.find((p) => p.id === selectedPackId) || null;
+    if (!pack || selectedGame.category !== 'smm' || !isSmmQuantityValid) return pack;
+
+    const formattedQuantity = smmQuantityNumber.toLocaleString('uz-UZ');
+    return {
+      ...pack,
+      amount: smmQuantityNumber,
+      label: pack.label.replace(/^\d[\d,.\s]*/, `${formattedQuantity} `).trim(),
+      priceUzs: calculateSmmPrice(smmQuantityNumber),
+    };
+  }, [isSmmQuantityValid, selectedGame, selectedPackId, smmQuantityNumber]);
 
   const filteredGames = useMemo(() => {
     if (category === 'all') return games;
@@ -433,8 +467,17 @@ export default function App() {
 
   function confirmSelection() {
     setGameFormError('');
+    if (storeSettings.disabledGameIds.includes(selectedGame.id)) {
+      setGameFormError('Bu xizmat vaqtincha ishlamayapti.');
+      return;
+    }
     if (!selectedPack) {
       setGameFormError(t.errSelectPack);
+      triggerHaptic('error');
+      return;
+    }
+    if (selectedGame.category === 'smm' && !isSmmQuantityValid) {
+      setGameFormError(`SMM miqdori ${MIN_SMM_QUANTITY.toLocaleString('uz-UZ')} dan ${MAX_SMM_QUANTITY.toLocaleString('uz-UZ')} tagacha bo‘lishi kerak.`);
       triggerHaptic('error');
       return;
     }
@@ -500,6 +543,7 @@ export default function App() {
             setCardInfo(nextCard);
             writeCacheJson(CARD_CACHE_KEY, nextCard);
           }}
+          onStoreSettingsUpdated={setStoreSettings}
           onBackToStore={() => {
             window.history.pushState({}, '', '/');
             setIsPanelRoute(false);
@@ -607,7 +651,7 @@ export default function App() {
       <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8 pb-24 md:pb-12">
         {/* HOME PAGE */}
         {activePage === 'p-home' && (
-          <div className="space-y-8">
+          <div className={`space-y-6 ${homeEntranceClass}`}>
             <BannerCarousel t={t} customMedia={customMedia} onSelectGame={openGame} />
 
             {/* Trust strip */}
@@ -653,6 +697,7 @@ export default function App() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-3">
                     {section.items.map((game) => {
+                      const unavailable = storeSettings.disabledGameIds.includes(game.id);
                       const minPrice = Math.min(...game.packs.map((p) => p.priceUzs));
                       const firstPack = game.packs[0];
                       const firstCoins =
@@ -668,7 +713,9 @@ export default function App() {
                           key={game.id}
                           type="button"
                           onClick={() => openGame(game.id)}
-                          className="ios-glass-card group text-left rounded-[18px] hover:border-[#007AFF]/45 dark:hover:border-[#E5B94C]/60 p-2.5 sm:p-3.5 transition-all duration-150 active:scale-[0.98] flex items-center gap-2.5 sm:gap-3 cursor-pointer"
+                          disabled={unavailable}
+                          aria-disabled={unavailable}
+                          className={`ios-glass-card group text-left rounded-[18px] hover:border-[#007AFF]/45 dark:hover:border-[#E5B94C]/60 p-2.5 sm:p-3.5 transition-all duration-150 active:scale-[0.98] flex items-center gap-2.5 sm:gap-3 ${unavailable ? 'cursor-not-allowed opacity-65' : 'cursor-pointer'}`}
                         >
                           <GameEmblem
                             gameId={game.id}
@@ -681,10 +728,10 @@ export default function App() {
                               {game.name}
                             </h3>
                             <p className="mt-0.5 text-[11px] sm:text-xs font-mono-num font-semibold text-[var(--gold-2)] dark:text-[#E5B94C] truncate">
-                              {formatUzs(minPrice, t.uzs)}
+                              {unavailable ? 'Vaqtincha yopiq' : formatUzs(minPrice, t.uzs)}
                             </p>
                             <p className="mt-0.5 text-[10px] text-[var(--ink-muted)] truncate">
-                              {game.packs.length} {t.packsCount} · +{firstCoins} {t.coinsUnit}
+                              {unavailable ? 'Admin vaqtincha o‘chirgan' : `${game.packs.length} ${t.packsCount} · +${firstCoins} ${t.coinsUnit}`}
                             </p>
                           </div>
                         </button>
@@ -740,6 +787,7 @@ export default function App() {
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-3">
               {filteredGames.map((game) => {
+                const unavailable = storeSettings.disabledGameIds.includes(game.id);
                 const minPrice = Math.min(...game.packs.map((p) => p.priceUzs));
                 const firstPack = game.packs[0];
                 const firstCoins =
@@ -755,7 +803,9 @@ export default function App() {
                     key={game.id}
                     type="button"
                     onClick={() => openGame(game.id)}
-                    className="ios-glass-card text-left rounded-[18px] hover:border-[#007AFF]/45 dark:hover:border-[#E5B94C]/60 p-2.5 sm:p-3.5 transition-all active:scale-[0.98] flex items-center gap-2.5 sm:gap-3 cursor-pointer"
+                    disabled={unavailable}
+                    aria-disabled={unavailable}
+                    className={`ios-glass-card text-left rounded-[18px] hover:border-[#007AFF]/45 dark:hover:border-[#E5B94C]/60 p-2.5 sm:p-3.5 transition-all active:scale-[0.98] flex items-center gap-2.5 sm:gap-3 ${unavailable ? 'cursor-not-allowed opacity-65' : 'cursor-pointer'}`}
                   >
                     <GameEmblem
                       gameId={game.id}
@@ -768,10 +818,10 @@ export default function App() {
                         {game.name}
                       </h2>
                       <p className="mt-0.5 text-[11px] sm:text-xs font-mono-num font-bold text-[var(--gold-2)] dark:text-[#E5B94C] truncate">
-                        {formatUzs(minPrice, t.uzs)}
+                        {unavailable ? 'Vaqtincha yopiq' : formatUzs(minPrice, t.uzs)}
                       </p>
                       <p className="mt-0.5 text-[10px] text-[var(--ink-muted)] truncate">
-                        {game.packs.length} {t.packsCount} · +{firstCoins} {t.coinsUnit}
+                        {unavailable ? 'Admin vaqtincha o‘chirgan' : `${game.packs.length} ${t.packsCount} · +${firstCoins} ${t.coinsUnit}`}
                       </p>
                     </div>
                   </button>
@@ -925,6 +975,41 @@ export default function App() {
               </div>
             </section>
 
+            {selectedGame.category === 'smm' && (
+              <section aria-labelledby="smm-quantity-title" className="ios-glass-card rounded-[22px] border border-[#007AFF]/20 p-5 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <label id="smm-quantity-title" htmlFor="smm-quantity-input" className="font-display text-base font-bold text-[var(--ink)]">
+                    Buyurtma miqdori
+                  </label>
+                  <span className="rounded-full bg-[#007AFF]/10 px-2.5 py-1 text-[10px] font-bold tracking-wide text-[#007AFF] dark:bg-[#E5B94C]/15 dark:text-[#E5B94C]">
+                    MIN {MIN_SMM_QUANTITY}
+                  </span>
+                </div>
+                <input
+                  id="smm-quantity-input"
+                  type="number"
+                  inputMode="numeric"
+                  min={MIN_SMM_QUANTITY}
+                  max={MAX_SMM_QUANTITY}
+                  step={1}
+                  value={smmQuantity}
+                  onChange={(event) => {
+                    setSmmQuantity(event.target.value);
+                    setGameFormError('');
+                  }}
+                  aria-describedby="smm-quantity-help"
+                  className="w-full min-h-[54px] rounded-xl border border-[#007AFF]/30 bg-[var(--surface)] px-4 text-lg font-mono-num font-semibold text-[var(--ink)] focus:outline-none focus:ring-2 focus:ring-[#007AFF]/25 focus:border-[#007AFF] dark:focus:border-[#E5B94C]"
+                />
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--ink-muted)]">
+                  <p id="smm-quantity-help">
+                    100 ta = 10 so‘m · maksimal {MAX_SMM_QUANTITY.toLocaleString('uz-UZ')} ta. Narx butun so‘mga yaxlitlanadi.
+                  </p>
+                  <p aria-live="polite" className="font-mono-num font-semibold text-[var(--gold-2)] dark:text-[#E5B94C]">
+                    {isSmmQuantityValid ? formatUzs(calculateSmmPrice(smmQuantityNumber), t.uzs) : 'Miqdorni tekshiring'}
+                  </p>
+                </div>
+              </section>
+            )}
 
             {/* Sticky Purchase Bar */}
             <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-[var(--line)] bg-[var(--surface)]/95 backdrop-blur-md px-4 py-3 pb-safe md:static md:rounded-2xl md:border md:p-5">
@@ -952,7 +1037,9 @@ export default function App() {
                     )}
                   </p>
                   <p className="font-mono-num text-base sm:text-lg font-bold text-[var(--gold-2)] dark:text-[#E5B94C] whitespace-nowrap">
-                    {selectedPack ? formatUzs(selectedPack.priceUzs, t.uzs) : '—'}
+                    {selectedPack && (selectedGame.category !== 'smm' || isSmmQuantityValid)
+                      ? formatUzs(selectedPack.priceUzs, t.uzs)
+                      : '—'}
                   </p>
                 </div>
                 <button
@@ -1144,10 +1231,16 @@ export default function App() {
             </div>
 
             {/* Support */}
-            <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 space-y-1.5">
+            <a
+              href="https://t.me/zzaaxxzz09"
+              target="_blank"
+              rel="noreferrer"
+              className="block rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 transition-colors hover:border-[#E5B94C]/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E5B94C]"
+            >
               <h2 className="font-display text-base font-bold text-[var(--ink)]">{t.profileSupport}</h2>
               <p className="text-sm text-[var(--ink-muted)]">{t.supportDesc}</p>
-            </div>
+              <p className="mt-2 text-sm font-semibold text-[#E5B94C]">@zzaaxxzz09</p>
+            </a>
           </div>
         )}
       </main>

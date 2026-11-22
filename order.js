@@ -14,8 +14,10 @@ import {
   signOrderToken,
   telegramApi,
   updateOrder,
+  validatePromoCode,
   validateReceiptDataUrl,
   verifyTelegramInitData,
+  getStoreSettings,
 } from './_lib.js';
 
 export async function handler(event) {
@@ -67,17 +69,33 @@ export async function handler(event) {
   // 3. Server-side authoritative catalog & price validation (never trust client price)
   const gameId = String(body.gameId || body.game || '').trim();
   const packId = String(body.packId || body.item || '').trim();
-  const pack = resolveCatalogPack(gameId, packId);
+  const pack = resolveCatalogPack(gameId, packId, body.quantity);
   if (!pack) {
-    return jsonResponse(400, { ok: false, error: 'Tanlangan o‘yin yoki paket topilmadi' }, origin);
+    return jsonResponse(400, { ok: false, error: 'Tanlangan xizmat, paket yoki miqdor noto‘g‘ri.' }, origin);
+  }
+  const storeSettings = await getStoreSettings();
+  if (storeSettings.disabledGameIds.includes(gameId)) {
+    return jsonResponse(423, { ok: false, code: 'temporarily_unavailable', error: 'Bu xizmat vaqtincha ishlamayapti.' }, origin);
   }
 
+  const submittedPromoCode = typeof body.promoCode === 'string' ? body.promoCode.trim() : '';
+  let promo = null;
+  if (submittedPromoCode) {
+    promo = await validatePromoCode(submittedPromoCode);
+    if (!promo.valid) {
+      return jsonResponse(400, { ok: false, code: 'promo_invalid', error: 'Promo kod faol emas yoki foydalanish limiti tugagan.' }, origin);
+    }
+  }
+
+  const basePriceUzs = pack.priceUzs;
+  const promoDiscountUzs = promo ? Math.round((basePriceUzs * promo.discountPercent) / 100) : 0;
+  const finalPriceUzs = Math.max(1, basePriceUzs - promoDiscountUzs);
   const clientPrice = Number(body.price);
-  if (!Number.isInteger(clientPrice) || clientPrice <= 0 || clientPrice !== pack.priceUzs) {
+  if (!Number.isInteger(clientPrice) || clientPrice <= 0 || clientPrice !== finalPriceUzs) {
     return jsonResponse(409, {
       ok: false,
       code: 'price_mismatch',
-      serverPrice: pack.priceUzs,
+      serverPrice: finalPriceUzs,
       error: 'Paket narxi yangilangan. Sahifani yangilab qayta urining.',
     }, origin);
   }
@@ -123,7 +141,11 @@ export async function handler(event) {
     gameName: pack.gameName,
     packId: pack.packId,
     packLabel: pack.packLabel,
-    priceUzs: pack.priceUzs,
+    priceUzs: finalPriceUzs,
+    basePriceUzs,
+    promoCode: promo?.code || '',
+    promoDiscountPercent: promo?.discountPercent || 0,
+    promoDiscountUzs,
     coinsReward: pack.coinsReward,
     playerId: targetCheck.value,
     playerDisplay: targetCheck.display,
@@ -146,7 +168,14 @@ export async function handler(event) {
     updatedAt: Date.now(),
   };
 
-  await saveOrder(orderRecord);
+  try {
+    await saveOrder(orderRecord, { promoCode: promo?.code || '' });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'PROMO_CODE_UNAVAILABLE') {
+      return jsonResponse(409, { ok: false, code: 'promo_invalid', error: 'Promo kod endi faol emas yoki foydalanish limiti tugagan.' }, origin);
+    }
+    throw error;
+  }
 
   // 7. Send receipt & inline approval controls to Telegram Admin (if configured)
   let adminNotified = false;
@@ -180,7 +209,8 @@ export async function handler(event) {
       '',
       `<b>O‘yin:</b> ${escapeHtml(pack.gameName)}`,
       `<b>Paket:</b> ${escapeHtml(pack.packLabel)}`,
-      `<b>Summa:</b> ${pack.priceUzs.toLocaleString('uz-UZ')} so‘m (+${pack.coinsReward} tanga)`,
+      `<b>Summa:</b> ${finalPriceUzs.toLocaleString('uz-UZ')} so‘m (+${pack.coinsReward} tanga)`,
+      promo ? `<b>Promo:</b> ${escapeHtml(promo.code)} · -${promoDiscountUzs.toLocaleString('uz-UZ')} so‘m (${promo.discountPercent}%)` : null,
       `<b>Kiritilgan ID:</b> <code>${escapeHtml(targetCheck.display)}</code>`,
       serverCheck.value ? `<b>Server ID:</b> <code>${escapeHtml(serverCheck.value)}</code>` : null,
       `<b>Mijoz:</b> ${userDisplay}`,
@@ -227,7 +257,11 @@ export async function handler(event) {
       ref,
       orderToken,
       status: 'pending',
-      priceUzs: pack.priceUzs,
+      priceUzs: finalPriceUzs,
+      basePriceUzs,
+      promoCode: promo?.code || '',
+      promoDiscountPercent: promo?.discountPercent || 0,
+      promoDiscountUzs,
       coinsReward: pack.coinsReward,
       mapped: orderRecord.mapped,
       adminNotified,

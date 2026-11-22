@@ -1,6 +1,12 @@
 export const MAX_FILE_MB = 10;
 export const MAX_SERVER_BYTES = 3 * 1024 * 1024;
 export const CHECKOUT_SECONDS = 300; // 5 minutes
+export const MIN_SMM_QUANTITY = 100;
+export const MAX_SMM_QUANTITY = 1_000_000;
+
+export function calculateSmmPrice(quantity: number): number {
+  return Math.round(quantity / 10);
+}
 
 export function formatUzs(amount: number, unit = 'so‘m'): string {
   const safe = Number.isFinite(amount) ? Math.round(amount) : 0;

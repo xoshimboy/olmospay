@@ -2,6 +2,7 @@ import { handler as adminMediaHandler } from '../../admin-media.js';
 import { handler as adminPanelHandler } from '../../admin-panel.js';
 import { handler as orderHandler } from '../../order.js';
 import { handler as orderStatusHandler } from '../../order-status.js';
+import { handler as promoCodeHandler } from '../../promo-code.js';
 import { handler as soraHandler } from '../../sora.js';
 import { handler as telegramWebhookHandler } from '../../tg-webhook.js';
 import { handler as userCoinsHandler } from '../../user-coins.js';
@@ -12,6 +13,7 @@ const handlers = {
   'admin-panel': adminPanelHandler,
   order: orderHandler,
   'order-status': orderStatusHandler,
+  'promo-code': promoCodeHandler,
   sora: soraHandler,
   'tg-webhook': telegramWebhookHandler,
   'user-coins': userCoinsHandler,

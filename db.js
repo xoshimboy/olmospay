@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { bigint, integer, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { bigint, boolean, integer, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 
 export const olmosOrders = pgTable('olmos_orders', {
   ref: text('ref').primaryKey(),
@@ -20,6 +20,15 @@ export const olmosRateLimits = pgTable('olmos_rate_limits', {
   rateKey: text('rate_key').primaryKey(),
   windowStartedAt: bigint('window_started_at', { mode: 'number' }).notNull(),
   hits: integer('hits').notNull(),
+});
+
+export const olmosPromoCodes = pgTable('olmos_promo_codes', {
+  code: text('code').primaryKey(),
+  discountPercent: integer('discount_percent').notNull(),
+  maxUses: integer('max_uses').notNull(),
+  usedCount: integer('used_count').notNull().default(0),
+  active: boolean('active').notNull().default(true),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull(),
 });
 
 let pool;

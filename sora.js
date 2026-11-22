@@ -1,5 +1,5 @@
 import { getPublicCatalog } from './_catalog-map.js';
-import { getCorsHeaders, jsonResponse, soraRequest } from './_lib.js';
+import { getCorsHeaders, getStoreSettings, jsonResponse, soraRequest } from './_lib.js';
 
 export async function handler(event) {
   const origin = event.headers?.origin || event.headers?.Origin || '';
@@ -15,6 +15,7 @@ export async function handler(event) {
   const path = String(params.path || 'public-catalog').trim();
 
   if (path === 'public-catalog') {
+    const storeSettings = await getStoreSettings();
     return {
       statusCode: 200,
       headers: {
@@ -22,7 +23,7 @@ export async function handler(event) {
         'Cache-Control': 'public, max-age=30, stale-while-revalidate=120',
         ...getCorsHeaders(origin),
       },
-      body: JSON.stringify({ ok: true, games: getPublicCatalog() }),
+      body: JSON.stringify({ ok: true, games: getPublicCatalog(), storeSettings }),
     };
   }
 

@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { getStore } from '@netlify/blobs';
-import { desc, eq, like, sql } from 'drizzle-orm';
+import { delete as deleteRow, desc, eq, like, sql } from 'drizzle-orm';
 import { getDatabase, olmosAppState, olmosOrders, olmosRateLimits } from './db.js';
 import { PAYMENT_CARD, resolveCatalogPack } from './_catalog-map.js';
 
@@ -449,6 +449,42 @@ export async function updateOrder(ref, patch) {
   const updated = { ...current, ...patch, updatedAt: Date.now() };
   await saveOrder(updated);
   return updated;
+}
+
+export async function deleteOrder(ref) {
+  const order = await getOrder(ref);
+  if (!order) return { ok: false, reason: 'not_found' };
+  if (!['pending', 'manual_pending', 'canceled'].includes(order.status)) {
+    return { ok: false, reason: 'protected_status' };
+  }
+
+  const database = getDatabase();
+  if (database) {
+    await database.delete(olmosOrders).where(eq(olmosOrders.ref, ref));
+    return { ok: true };
+  }
+
+  const store = getOrdersBlobStore();
+  if (store) {
+    await store.delete(`order:${ref}`);
+    const refs = (await store.get('all-order-refs', { type: 'json' }).catch(() => null)) || [];
+    await store.setJSON('all-order-refs', refs.filter((item) => item !== ref));
+    if (order.tgUserId) {
+      const key = `user:${order.tgUserId}`;
+      const userRefs = (await store.get(key, { type: 'json' }).catch(() => null)) || [];
+      await store.setJSON(key, userRefs.filter((item) => item !== ref));
+    }
+    return { ok: true };
+  }
+
+  memoryOrders.delete(ref);
+  const allIndex = memoryAllOrderRefs.indexOf(ref);
+  if (allIndex !== -1) memoryAllOrderRefs.splice(allIndex, 1);
+  if (order.tgUserId) {
+    const userRefs = memoryUserOrders.get(String(order.tgUserId)) || [];
+    memoryUserOrders.set(String(order.tgUserId), userRefs.filter((item) => item !== ref));
+  }
+  return { ok: true };
 }
 
 export async function getUserOrders(tgUserId) {

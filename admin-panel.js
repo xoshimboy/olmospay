@@ -1,6 +1,7 @@
 import { CATALOG } from './_catalog-map.js';
 import {
   creditOrderCoins,
+  deleteOrder,
   ensureTelegramWebhook,
   escapeHtml,
   getCardSettings,
@@ -250,6 +251,18 @@ export async function handler(event) {
     }
 
     const ref = String(body.ref || '').trim();
+    if (action === 'delete-order') {
+      const result = await deleteOrder(ref);
+      if (!result.ok) {
+        const statusCode = result.reason === 'not_found' ? 404 : 409;
+        const message = result.reason === 'protected_status'
+          ? 'Bajarilgan yoki jarayondagi buyurtmalar moliyaviy tarixni saqlash uchun o‘chirilmaydi.'
+          : 'Buyurtma topilmadi.';
+        return jsonResponse(statusCode, { ok: false, error: message }, origin);
+      }
+      return jsonResponse(200, { ok: true, ref }, origin);
+    }
+
     const order = await getOrder(ref);
     if (!order) {
       return jsonResponse(404, { ok: false, error: 'Buyurtma topilmadi' }, origin);

@@ -275,7 +275,8 @@ export function AdminPanelPage({
     loadDashboard('');
   }
 
-  async function runOrderAction(ref: string, action: 'approve-order' | 'check-order' | 'manual-done' | 'reject-order') {
+  async function runOrderAction(ref: string, action: 'approve-order' | 'check-order' | 'manual-done' | 'reject-order' | 'delete-order') {
+    if (action === 'delete-order' && !window.confirm('Faqat kutilayotgan yoki bekor qilingan buyurtma o‘chiriladi. Davom etasizmi?')) return;
     setBannerNotice(null);
     setBusyOrderRef(ref);
     try {
@@ -289,7 +290,9 @@ export function AdminPanelPage({
         setBannerNotice({ type: 'err', text: data?.error || 'Buyurtma amalini bajarib bo‘lmadi.' });
         return;
       }
-      if (data.order) {
+      if (action === 'delete-order') {
+        setDashboard((prev) => prev ? { ...prev, orders: prev.orders.filter((o) => o.ref !== ref) } : prev);
+      } else if (data.order) {
         setDashboard((prev) => {
           if (!prev) return prev;
           const nextOrders = prev.orders.map((o) => (o.ref === ref ? { ...o, ...data.order } : o));
@@ -983,6 +986,7 @@ export function AdminPanelPage({
                       const canCheck = ord.status === 'processing' && ord.mapped;
                       const canFinishOrReject =
                         ord.status === 'pending' || ord.status === 'manual_pending' || ord.status === 'processing';
+                      const canDelete = ord.status === 'pending' || ord.status === 'manual_pending' || ord.status === 'canceled';
 
                       return (
                         <div
@@ -1021,7 +1025,7 @@ export function AdminPanelPage({
                             </div>
                           </div>
 
-                          {canFinishOrReject && (
+                          {(canFinishOrReject || canDelete) && (
                             <div className="pt-3 border-t border-black/[0.06] flex flex-wrap items-center gap-2">
                               {canApprove && (
                                 <button
@@ -1047,24 +1051,40 @@ export function AdminPanelPage({
                                 </button>
                               )}
 
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => runOrderAction(ord.ref, 'manual-done')}
-                                className="min-h-[40px] px-4 rounded-full bg-[#34C759]/14 hover:bg-[#34C759]/22 text-[#1F8B4D] text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer disabled:opacity-50"
-                              >
-                                <Check size={14} />
-                                <span>Bajarildi</span>
-                              </button>
+                              {canFinishOrReject && (
+                                <>
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() => runOrderAction(ord.ref, 'manual-done')}
+                                    className="min-h-[40px] px-4 rounded-full bg-[#34C759]/14 hover:bg-[#34C759]/22 text-[#1F8B4D] text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer disabled:opacity-50"
+                                  >
+                                    <Check size={14} />
+                                    <span>Bajarildi</span>
+                                  </button>
 
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => runOrderAction(ord.ref, 'reject-order')}
-                                className="min-h-[40px] px-4 rounded-full bg-[#FF3B30]/12 hover:bg-[#FF3B30]/20 text-[#D70015] text-xs font-semibold whitespace-nowrap cursor-pointer disabled:opacity-50"
-                              >
-                                Rad etish
-                              </button>
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() => runOrderAction(ord.ref, 'reject-order')}
+                                    className="min-h-[40px] px-4 rounded-full bg-[#FF3B30]/12 hover:bg-[#FF3B30]/20 text-[#D70015] text-xs font-semibold whitespace-nowrap cursor-pointer disabled:opacity-50"
+                                  >
+                                    Rad etish
+                                  </button>
+                                </>
+                              )}
+
+                              {canDelete && (
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={() => runOrderAction(ord.ref, 'delete-order')}
+                                  className="min-h-[40px] px-4 rounded-full border border-[#FF3B30]/20 text-[#D70015] text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer disabled:opacity-50"
+                                >
+                                  {isBusy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                                  <span>O‘chirish</span>
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>

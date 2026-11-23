@@ -3,6 +3,7 @@ import {
   creditOrderCoins,
   escapeHtml,
   getOrder,
+  getStorefrontSettings,
   getUserCoins,
   getTelegramWebhookSecret,
   inferSoraTypeByService,
@@ -68,6 +69,35 @@ async function notifyCustomer(tgUserId, text) {
     text,
     parse_mode: 'HTML',
   });
+}
+
+export async function publishOrderProof(order) {
+  if (!order?.ref || order.proofChannelNotifiedAt) return;
+  const settings = await getStorefrontSettings();
+  const channelId = String(settings.proofChannelId || '').trim();
+  if (!channelId) return;
+  const rawTarget = String(order.playerDisplay || order.playerId || '');
+  const maskedTarget = rawTarget.length > 3 ? `${'•'.repeat(Math.min(rawTarget.length - 3, 8))}${rawTarget.slice(-3)}` : '•••';
+  const result = await telegramApi('sendMessage', {
+    chat_id: channelId,
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
+    text: [
+      '✅ <b>BUYURTMA BAJARILDI</b>',
+      `<b>Xizmat:</b> ${escapeHtml(order.gameName || '')}`,
+      `<b>Paket:</b> ${escapeHtml(order.packLabel || '')}`,
+      `<b>To‘lov:</b> ${Number(order.priceUzs || 0).toLocaleString('uz-UZ')} so‘m`,
+      `<b>O‘yinchi:</b> <code>${escapeHtml(maskedTarget)}</code>`,
+      `<b>Buyurtma:</b> <code>${escapeHtml(order.ref)}</code>`,
+    ].join('\n'),
+  });
+  if (result?.ok) {
+    await updateOrder(order.ref, {
+      proofChannelNotifiedAt: Date.now(),
+      proofChannelMessageId: result.result?.message_id || null,
+    });
+  }
+  return result;
 }
 
 async function maybeAlertLowBalance(adminId, soraClient = soraRequest) {
@@ -179,6 +209,7 @@ export async function applySoraStatusOutcome({
       void coinTextAdmin;
     }
 
+    await publishOrderProof(updated || { ...latest, ...ord, ...stored, status: 'completed' });
     await maybeAlertLowBalance(adminId, soraClient);
     return updated;
   }

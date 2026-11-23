@@ -24,6 +24,7 @@ import {
   ShieldCheck,
   ShoppingBag,
   Store,
+  Tag,
   Trash2,
   Users,
   Zap,
@@ -34,7 +35,7 @@ import type { CardInfo, GameItem, Lang, OrderStatus, ThemeMode } from '../types'
 import { compressBannerImage, compressCoverImage, formatOrderDate, formatUzs } from '../utils/format';
 import { GameEmblem } from './GameEmblem';
 
-type AdminTab = 'stats' | 'orders' | 'covers' | 'banners' | 'message' | 'settings';
+type AdminTab = 'stats' | 'orders' | 'prices' | 'promos' | 'covers' | 'banners' | 'message' | 'settings';
 type CoverScope = 'services' | 'packs';
 
 interface AdminOrderRecord {
@@ -61,6 +62,23 @@ interface AdminOrderRecord {
   lastError?: string;
   createdAt: number;
   updatedAt?: number;
+}
+
+interface AdminPromoCode {
+  code: string;
+  discountPercent: number;
+  maxUses: number;
+  usedCount: number;
+  enabled: boolean;
+  createdAt: number;
+}
+
+interface StorefrontSettings {
+  priceOverrides: Record<string, Record<string, number>>;
+  mandatorySubscription: boolean;
+  subscriptionChannelId: string;
+  subscriptionLink: string;
+  proofChannelId: string;
 }
 
 interface AdminMessageLog {
@@ -90,6 +108,9 @@ interface AdminDashboardData {
   orders: AdminOrderRecord[];
   messageLogs: AdminMessageLog[];
   card: CardInfo;
+  storefrontSettings: StorefrontSettings;
+  promoCodes: AdminPromoCode[];
+  games: GameItem[];
   sora: {
     ok: boolean;
     balance: number | null;
@@ -107,6 +128,7 @@ interface AdminDashboardData {
     error: string | null;
     adminIdSet: boolean;
     username: string | null;
+    webhookConfigured?: boolean;
   };
 }
 
@@ -122,6 +144,7 @@ interface AdminPanelPageProps {
   initialAdminToken?: string;
   onMediaUpdated: (media: Record<string, string>) => void;
   onCardUpdated: (card: CardInfo) => void;
+  onCatalogUpdated: (games: GameItem[]) => void;
   onBackToStore?: () => void;
 }
 
@@ -138,6 +161,7 @@ export function AdminPanelPage({
   initialAdminToken = '',
   onMediaUpdated,
   onCardUpdated,
+  onCatalogUpdated,
   onBackToStore,
 }: AdminPanelPageProps) {
   const [activeTab, setActiveTab] = useState<AdminTab>('stats');
@@ -188,6 +212,16 @@ export function AdminPanelPage({
   const [cardHolder, setCardHolder] = useState(cardInfo.holder || CARD_INFO.holder);
   const [cardBank, setCardBank] = useState(cardInfo.bank || CARD_INFO.bank);
   const [savingCard, setSavingCard] = useState(false);
+  const [savingPrices, setSavingPrices] = useState(false);
+  const [savingShopSettings, setSavingShopSettings] = useState(false);
+  const [priceDraft, setPriceDraft] = useState<Record<string, Record<string, string>>>({});
+  const [promoCodeInput, setPromoCodeInput] = useState('');
+  const [promoMaxUses, setPromoMaxUses] = useState('100');
+  const [busyPromoCode, setBusyPromoCode] = useState('');
+  const [mandatorySubscription, setMandatorySubscription] = useState(false);
+  const [subscriptionChannelId, setSubscriptionChannelId] = useState('');
+  const [subscriptionLink, setSubscriptionLink] = useState('');
+  const [proofChannelId, setProofChannelId] = useState('');
 
   // Telegram broadcast / direct message state
   const [msgTarget, setMsgTarget] = useState<'admin' | 'broadcast' | 'custom'>('admin');
@@ -230,6 +264,18 @@ export function AdminPanelPage({
           return;
         }
         setDashboard(data);
+        if (Array.isArray(data.games)) {
+          setPriceDraft(Object.fromEntries(data.games.map((game: GameItem) => [
+            game.id,
+            Object.fromEntries(game.packs.map((pack) => [pack.id, String(pack.priceUzs)])),
+          ])));
+        }
+        if (data.storefrontSettings) {
+          setMandatorySubscription(Boolean(data.storefrontSettings.mandatorySubscription));
+          setSubscriptionChannelId(data.storefrontSettings.subscriptionChannelId || '');
+          setSubscriptionLink(data.storefrontSettings.subscriptionLink || '');
+          setProofChannelId(data.storefrontSettings.proofChannelId || '');
+        }
         if (data.card) {
           onCardUpdated(data.card);
           setCardNumber(data.card.number);
@@ -413,6 +459,106 @@ export function AdminPanelPage({
     }
   }
 
+  async function handleSavePrices() {
+    if (!dashboard) return;
+    const priceOverrides: Record<string, Record<string, number>> = {};
+    for (const game of dashboard.games || games) {
+      const packs: Record<string, number> = {};
+      for (const pack of game.packs) {
+        const value = Number(priceDraft[game.id]?.[pack.id]);
+        if (!Number.isSafeInteger(value) || value < 1 || value > 100_000_000) {
+          setBannerNotice({ type: 'err', text: `${game.name} · ${pack.label}: 1 dan 100 000 000 so‘mgacha narx kiriting.` });
+          return;
+        }
+        packs[pack.id] = value;
+      }
+      priceOverrides[game.id] = packs;
+    }
+    setSavingPrices(true);
+    setBannerNotice(null);
+    try {
+      const res = await fetch('/.netlify/functions/admin-panel', {
+        method: 'POST',
+        headers: buildAuthHeaders(),
+        body: JSON.stringify({ action: 'save-storefront-settings', priceOverrides, initData, adminKey, adminToken }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setBannerNotice({ type: 'err', text: data?.error || 'Narxlarni saqlab bo‘lmadi.' });
+        return;
+      }
+      setDashboard((current) => current ? { ...current, storefrontSettings: data.storefrontSettings, games: data.games } : current);
+      if (Array.isArray(data.games)) onCatalogUpdated(data.games);
+      setBannerNotice({ type: 'ok', text: 'Barcha paket narxlari saqlandi.' });
+    } catch {
+      setBannerNotice({ type: 'err', text: t.errNetwork });
+    } finally {
+      setSavingPrices(false);
+    }
+  }
+
+  async function handleSaveShopSettings(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingShopSettings(true);
+    setBannerNotice(null);
+    try {
+      const res = await fetch('/.netlify/functions/admin-panel', {
+        method: 'POST',
+        headers: buildAuthHeaders(),
+        body: JSON.stringify({
+          action: 'save-storefront-settings',
+          mandatorySubscription,
+          subscriptionChannelId,
+          subscriptionLink,
+          proofChannelId,
+          initData,
+          adminKey,
+          adminToken,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setBannerNotice({ type: 'err', text: data?.error || 'Do‘kon sozlamalarini saqlab bo‘lmadi.' });
+        return;
+      }
+      setDashboard((current) => current ? { ...current, storefrontSettings: data.storefrontSettings } : current);
+      setBannerNotice({ type: 'ok', text: 'Obuna va isbot kanali sozlamalari saqlandi.' });
+    } catch {
+      setBannerNotice({ type: 'err', text: t.errNetwork });
+    } finally {
+      setSavingShopSettings(false);
+    }
+  }
+
+  async function handlePromoAction(action: 'save-promo-code' | 'toggle-promo-code' | 'delete-promo-code', code = '', enabled?: boolean) {
+    if (action === 'delete-promo-code' && !window.confirm(`${code} promokodini o‘chirasizmi?`)) return;
+    setBusyPromoCode(code || 'new');
+    setBannerNotice(null);
+    try {
+      const res = await fetch('/.netlify/functions/admin-panel', {
+        method: 'POST',
+        headers: buildAuthHeaders(),
+        body: JSON.stringify({ action, code: code || promoCodeInput, maxUses: promoMaxUses, enabled, initData, adminKey, adminToken }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setBannerNotice({ type: 'err', text: data?.error || 'Promokod amalini bajarib bo‘lmadi.' });
+        return;
+      }
+      setDashboard((current) => current ? { ...current, promoCodes: data.promoCodes || current.promoCodes } : current);
+      if (action === 'save-promo-code') {
+        setPromoCodeInput('');
+        setBannerNotice({ type: 'ok', text: 'Promokod saqlandi. Chegirma: 2%.' });
+      } else {
+        setBannerNotice({ type: 'ok', text: action === 'delete-promo-code' ? 'Promokod o‘chirildi.' : 'Promokod holati yangilandi.' });
+      }
+    } catch {
+      setBannerNotice({ type: 'err', text: t.errNetwork });
+    } finally {
+      setBusyPromoCode('');
+    }
+  }
+
   async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault();
     if (!msgText.trim()) return;
@@ -531,6 +677,8 @@ export function AdminPanelPage({
   const navTabs: Array<{ id: AdminTab; label: string; icon: typeof BarChart3 }> = [
     { id: 'stats', label: 'Statistika', icon: BarChart3 },
     { id: 'orders', label: 'Buyurtmalar', icon: ShoppingBag },
+    { id: 'prices', label: 'Narxlar', icon: CreditCard },
+    { id: 'promos', label: 'Promokod', icon: Tag },
     { id: 'covers', label: 'Oblojkalar', icon: Images },
     { id: 'banners', label: 'Bannerlar', icon: ImageIcon },
     { id: 'message', label: 'Xabar', icon: Send },
@@ -553,7 +701,7 @@ export function AdminPanelPage({
   }
 
   return (
-    <div className="min-h-screen bg-[#F2F2F7] text-[#1C1C1E] flex flex-col">
+    <div className="admin-enter min-h-screen bg-[#F2F2F7] text-[#1C1C1E] flex flex-col">
       {/* Apple iOS Translucent Frosted Top Navigation Bar */}
       <header className="sticky top-0 z-30 border-b border-black/[0.08] bg-white/85 backdrop-blur-xl pt-safe">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-3 sm:gap-4">
@@ -687,7 +835,7 @@ export function AdminPanelPage({
             {/* Apple iOS Segmented Tab Bar */}
             <nav
               aria-label="Admin bo‘limlari"
-              className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 p-1.5 rounded-[20px] bg-[#E5E5EA]/85 border border-black/[0.04]"
+              className="grid grid-cols-4 sm:grid-cols-8 gap-1.5 p-1.5 rounded-[20px] bg-[#E5E5EA]/85 border border-black/[0.04]"
             >
               {navTabs.map((tab) => {
                 const Icon = tab.icon;
@@ -891,6 +1039,12 @@ export function AdminPanelPage({
                         )}
                       </div>
                       <div className="flex items-center justify-between gap-4 px-4 py-3">
+                        <span className="text-[#6C6C70]">Webhook holati</span>
+                        <span className={`font-semibold ${dashboard.bot.webhookConfigured ? 'text-[#1F8B4D]' : 'text-[#A65F00]'}`}>
+                          {dashboard.bot.webhookConfigured ? 'Ulangan' : 'Tekshirilmoqda'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-4 px-4 py-3">
                         <span className="text-[#6C6C70]">Yetkazish tezligi</span>
                         <span className="font-semibold text-[#1F8B4D]">1 daqiqa (avto)</span>
                       </div>
@@ -916,7 +1070,7 @@ export function AdminPanelPage({
                         <span className="font-mono-num font-semibold text-[#007AFF]">Ctrl + X</span>
                       </p>
                       <p>
-                        Tokenni almashtirish: <span className="font-mono-num">bot/.env</span> ichidagi <span className="font-mono-num">TG_BOT_TOKEN</span>.
+                        Tokenni xavfsiz almashtirish: Vercel loyiha sozlamalaridagi <span className="font-mono-num">Settings → Environment Variables</span> ichida <span className="font-mono-num">TG_BOT_TOKEN</span> ni yangilang va qayta deploy qiling. Token panelda ko‘rsatilmaydi.
                       </p>
                     </div>
                   </section>
@@ -1093,6 +1247,134 @@ export function AdminPanelPage({
                   </div>
                 )}
               </div>
+            )}
+
+            {activeTab === 'prices' && (
+              <section className="admin-enter space-y-4">
+                <div>
+                  <h2 className="font-display text-2xl font-bold text-[#1C1C1E]">Paket narxlari</h2>
+                  <p className="mt-1 text-sm text-[#6C6C70]">Do‘kondagi narxlarni shu yerdan o‘zgartiring. Saqlashdan keyin buyurtma summasi serverda ham qayta tekshiriladi.</p>
+                </div>
+                {(dashboard.games || games).map((game) => (
+                  <details key={game.id} open={game.id === 'pubg'} className="rounded-[20px] border border-black/[0.05] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                    <summary className="cursor-pointer list-none font-display text-base font-bold text-[#1C1C1E] flex items-center justify-between gap-3">
+                      <span>{game.name} <span className="text-xs font-normal text-[#8E8E93]">· {game.packs.length} paket</span></span>
+                      <ChevronRight size={18} className="text-[#8E8E93] transition-transform open:rotate-90" />
+                    </summary>
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {game.packs.map((pack) => {
+                        const inputId = `price-${game.id}-${pack.id}`;
+                        return (
+                          <div key={pack.id} className="flex items-center justify-between gap-3 rounded-2xl bg-[#F2F2F7] px-3.5 py-3">
+                            <label htmlFor={inputId} className="min-w-0 text-sm font-medium text-[#1C1C1E]">{pack.label}</label>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <input
+                                id={inputId}
+                                type="number"
+                                inputMode="numeric"
+                                min={1}
+                                max={100000000}
+                                step={1}
+                                value={priceDraft[game.id]?.[pack.id] ?? String(pack.priceUzs)}
+                                onChange={(event) => setPriceDraft((current) => ({
+                                  ...current,
+                                  [game.id]: { ...current[game.id], [pack.id]: event.target.value },
+                                }))}
+                                className="w-32 min-h-[42px] rounded-xl border border-black/[0.08] bg-white px-3 text-right font-mono-num text-sm font-semibold text-[#1C1C1E] focus:outline-none focus:border-[#007AFF]"
+                              />
+                              <span className="text-xs text-[#6C6C70]">so‘m</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </details>
+                ))}
+                <button
+                  type="button"
+                  disabled={savingPrices}
+                  onClick={handleSavePrices}
+                  className="min-h-[46px] px-5 rounded-full bg-[#007AFF] hover:bg-[#0066D6] disabled:opacity-50 text-white font-semibold text-sm inline-flex items-center gap-2 cursor-pointer"
+                >
+                  {savingPrices && <Loader2 size={15} className="animate-spin" />}
+                  <span>Narxlarni saqlash</span>
+                </button>
+              </section>
+            )}
+
+            {activeTab === 'promos' && (
+              <section className="admin-enter grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-4 items-start">
+                <form
+                  onSubmit={(event) => { event.preventDefault(); void handlePromoAction('save-promo-code'); }}
+                  className="rounded-[22px] border border-black/[0.05] bg-white p-5 space-y-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-9 w-9 rounded-xl bg-[#007AFF]/10 text-[#007AFF] flex items-center justify-center"><Tag size={18} /></div>
+                    <div>
+                      <h2 className="font-display text-lg font-bold text-[#1C1C1E]">Promokod yaratish</h2>
+                      <p className="text-xs text-[#6C6C70]">Hozirgi bazada chegirma 2% qilib belgilangan.</p>
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="promo-code-input" className="block text-xs font-medium text-[#6C6C70] mb-1.5">Promokod</label>
+                    <input
+                      id="promo-code-input"
+                      value={promoCodeInput}
+                      onChange={(event) => setPromoCodeInput(event.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''))}
+                      placeholder="MASALAN: OLMOS2"
+                      maxLength={32}
+                      autoCapitalize="characters"
+                      className="w-full min-h-[46px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 font-mono-num text-sm text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="promo-max-uses" className="block text-xs font-medium text-[#6C6C70] mb-1.5">Foydalanish limiti</label>
+                    <input
+                      id="promo-max-uses"
+                      type="number"
+                      min={1}
+                      max={1000000}
+                      step={1}
+                      value={promoMaxUses}
+                      onChange={(event) => setPromoMaxUses(event.target.value)}
+                      className="w-full min-h-[46px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 font-mono-num text-sm text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]"
+                    />
+                  </div>
+                  <button type="submit" disabled={busyPromoCode === 'new' || promoCodeInput.length < 3} className="min-h-[44px] px-5 rounded-full bg-[#007AFF] hover:bg-[#0066D6] disabled:opacity-50 text-white font-semibold text-sm inline-flex items-center gap-2 cursor-pointer">
+                    {busyPromoCode === 'new' && <Loader2 size={15} className="animate-spin" />}
+                    <span>Promokodni saqlash</span>
+                  </button>
+                </form>
+
+                <div className="rounded-[22px] border border-black/[0.05] bg-white p-5 space-y-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="font-display text-lg font-bold text-[#1C1C1E]">Mavjud promokodlar</h2>
+                    <span className="rounded-full bg-[#F2F2F7] px-2.5 py-1 text-xs font-semibold text-[#6C6C70]">{dashboard.promoCodes?.length || 0}</span>
+                  </div>
+                  {(dashboard.promoCodes || []).length === 0 ? (
+                    <p className="rounded-2xl border border-dashed border-black/10 bg-[#F8F9FC] p-6 text-center text-sm text-[#6C6C70]">Hozircha promokod yo‘q.</p>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {dashboard.promoCodes.map((promo) => (
+                        <article key={promo.code} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#F2F2F7] p-3.5">
+                          <div>
+                            <p className="font-mono-num font-bold text-[#1C1C1E]">{promo.code} <span className="ml-1 rounded-full bg-white px-2 py-0.5 text-xs text-[#007AFF]">-{promo.discountPercent}%</span></p>
+                            <p className="mt-1 text-xs text-[#6C6C70]">Ishlatildi: {promo.usedCount} / {promo.maxUses}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button type="button" disabled={busyPromoCode === promo.code} onClick={() => void handlePromoAction('toggle-promo-code', promo.code, !promo.enabled)} className={`min-h-[38px] px-3 rounded-full text-xs font-semibold cursor-pointer disabled:opacity-50 ${promo.enabled ? 'bg-[#34C759]/15 text-[#1F8B4D]' : 'bg-white text-[#6C6C70]'}`}>
+                              {busyPromoCode === promo.code ? <Loader2 size={14} className="animate-spin" /> : promo.enabled ? 'Faol' : 'O‘chiq'}
+                            </button>
+                            <button type="button" aria-label={`${promo.code} promokodini o‘chirish`} disabled={busyPromoCode === promo.code} onClick={() => void handlePromoAction('delete-promo-code', promo.code)} className="min-h-[38px] min-w-[38px] rounded-full bg-[#FF3B30]/10 text-[#D70015] flex items-center justify-center cursor-pointer disabled:opacity-50">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </section>
             )}
 
             {/* TAB 3: OBLOJKA VA RASMLAR (O'yinlar + Barcha UC/Olmos paketlari) */}
@@ -1705,6 +1987,39 @@ export function AdminPanelPage({
                   </form>
                 </div>
 
+                <form onSubmit={handleSaveShopSettings} className="rounded-[22px] border border-black/[0.05] bg-white p-5 space-y-4 lg:col-span-2 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-9 w-9 rounded-xl bg-[#007AFF]/10 text-[#007AFF] flex items-center justify-center"><Bot size={18} /></div>
+                    <div>
+                      <h2 className="font-display text-lg font-bold text-[#1C1C1E]">Telegram kanal sozlamalari</h2>
+                      <p className="text-xs text-[#6C6C70]">Bot kanalga admin qilib qo‘shilgan bo‘lishi kerak.</p>
+                    </div>
+                  </div>
+                  <label className="flex items-start gap-3 rounded-2xl bg-[#F2F2F7] p-4 cursor-pointer">
+                    <input type="checkbox" checked={mandatorySubscription} onChange={(event) => setMandatorySubscription(event.target.checked)} className="mt-0.5 h-4 w-4 accent-[#007AFF]" />
+                    <span><span className="block text-sm font-semibold text-[#1C1C1E]">Majburiy obunani yoqish</span><span className="mt-1 block text-xs text-[#6C6C70]">Buyurtma berishdan oldin bot foydalanuvchining kanalga a’zoligini tekshiradi.</span></span>
+                  </label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="subscription-channel-id" className="block text-xs font-medium text-[#6C6C70] mb-1.5">Majburiy obuna kanali ID yoki @username</label>
+                      <input id="subscription-channel-id" value={subscriptionChannelId} onChange={(event) => setSubscriptionChannelId(event.target.value)} placeholder="@kanal_nomi yoki -1001234567890" className="w-full min-h-[44px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 font-mono-num text-sm text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]" />
+                    </div>
+                    <div>
+                      <label htmlFor="subscription-channel-link" className="block text-xs font-medium text-[#6C6C70] mb-1.5">Obuna havolasi (ixtiyoriy)</label>
+                      <input id="subscription-channel-link" type="url" value={subscriptionLink} onChange={(event) => setSubscriptionLink(event.target.value)} placeholder="https://t.me/kanal_nomi" className="w-full min-h-[44px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 text-sm text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]" />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label htmlFor="proof-channel-id" className="block text-xs font-medium text-[#6C6C70] mb-1.5">Bajarilgan buyurtmalar uchun isbot kanali ID yoki @username</label>
+                      <input id="proof-channel-id" value={proofChannelId} onChange={(event) => setProofChannelId(event.target.value)} placeholder="@isbot_kanali yoki -1001234567890" className="w-full min-h-[44px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 font-mono-num text-sm text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]" />
+                    </div>
+                  </div>
+                  <p className="text-xs text-[#6C6C70]">Obuna tekshiruvi uchun botni obuna kanaliga admin qiling. Isbot yuborish uchun botni isbot kanaliga admin qilib, xabar yuborish huquqini bering. Kanalda faqat buyurtma kodi va qisman yashirilgan ID ko‘rsatiladi.</p>
+                  <button type="submit" disabled={savingShopSettings} className="min-h-[44px] px-5 rounded-full bg-[#007AFF] hover:bg-[#0066D6] disabled:opacity-50 text-white font-semibold text-sm inline-flex items-center gap-2 cursor-pointer">
+                    {savingShopSettings && <Loader2 size={15} className="animate-spin" />}
+                    <span>Kanal sozlamalarini saqlash</span>
+                  </button>
+                </form>
+
                 <div className="rounded-[22px] border border-black/[0.05] bg-white p-5 space-y-4 lg:col-span-2 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="space-y-1">
@@ -1715,8 +2030,7 @@ export function AdminPanelPage({
                         </h2>
                       </div>
                       <p className="text-sm text-[#6C6C70]">
-                        Sayt (<span className="font-mono-num">olmos-pay-sayt.zip</span>, bot polling o‘chiq) va Telegram bot (
-                        <span className="font-mono-num">olmos-pay-bot.zip</span>, mustaqil <span className="font-mono-num">/bot</span>) alohida arxivlanadi — alohida joylashda kirish muammosi va 409 xatosi bo‘lmaydi. Tokenni <span className="font-mono-num">bot/.env</span> faylida almashtiring.
+                        Sayt (<span className="font-mono-num">olmos-pay-sayt.zip</span>) va Telegram bot (<span className="font-mono-num">olmos-pay-bot.zip</span>) kodlari alohida arxivlanadi. Bot tokenini faqat Vercel loyiha Variables bo‘limida <span className="font-mono-num">TG_BOT_TOKEN</span> sifatida yangilang; maxfiy token panelda yoki kod arxivida saqlanmaydi.
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2.5 shrink-0">

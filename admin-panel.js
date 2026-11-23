@@ -1,4 +1,4 @@
-import { CATALOG } from './_catalog-map.js';
+import { CATALOG, getPublicCatalog } from './_catalog-map.js';
 import {
   creditOrderCoins,
   deleteOrder,
@@ -7,6 +7,12 @@ import {
   getCardSettings,
   getCorsHeaders,
   getOrder,
+  getStorefrontSettings,
+  listPromoCodes,
+  savePromoCode,
+  setPromoCodeEnabled,
+  deletePromoCode,
+  saveStorefrontSettings,
   getAdminMessageLogs,
   jsonResponse,
   listAllOrders,
@@ -18,7 +24,7 @@ import {
   updateOrder,
   verifyAdminAccess,
 } from './_lib.js';
-import { applySoraStatusOutcome, executeSoraApproval } from './tg-webhook.js';
+import { applySoraStatusOutcome, executeSoraApproval, publishOrderProof } from './tg-webhook.js';
 
 export async function handler(event) {
   const origin = event.headers?.origin || event.headers?.Origin || '';
@@ -70,7 +76,7 @@ export async function handler(event) {
   }
 
   if (event.httpMethod === 'GET') {
-    const [orders, card, soraMe, soraSvc, tgMe, customerIds, messageLogs] = await Promise.all([
+    const [orders, card, soraMe, soraSvc, tgMe, customerIds, messageLogs, storefrontSettings, promoCodes] = await Promise.all([
       listAllOrders(60),
       getCardSettings(),
       soraRequest('/me', { method: 'GET' }),
@@ -78,6 +84,8 @@ export async function handler(event) {
       process.env.TG_BOT_TOKEN ? telegramApi('getMe', {}) : Promise.resolve(null),
       listTelegramCustomerIds(),
       getAdminMessageLogs(30),
+      getStorefrontSettings(),
+      listPromoCodes(),
     ]);
     const webhook = await ensureTelegramWebhook();
 
@@ -118,6 +126,9 @@ export async function handler(event) {
         orders,
         messageLogs,
         card,
+        storefrontSettings,
+        promoCodes,
+        games: getPublicCatalog(storefrontSettings.priceOverrides),
         sora: {
           ok: soraMe.ok,
           balance: soraMe.ok ? soraMe.data?.balance : null,
@@ -144,6 +155,53 @@ export async function handler(event) {
 
   if (event.httpMethod === 'POST') {
     const action = String(body.action || '').trim();
+
+    if (action === 'save-storefront-settings') {
+      try {
+        const storefrontSettings = await saveStorefrontSettings({
+          priceOverrides: body.priceOverrides,
+          mandatorySubscription: body.mandatorySubscription,
+          subscriptionChannelId: body.subscriptionChannelId,
+          subscriptionLink: body.subscriptionLink,
+          proofChannelId: body.proofChannelId,
+        });
+        return jsonResponse(200, { ok: true, storefrontSettings, games: getPublicCatalog(storefrontSettings.priceOverrides) }, origin);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : '';
+        const message = reason === 'subscription_channel_required'
+          ? 'Majburiy obunani yoqish uchun kanal ID yoki @username kiriting.'
+          : 'Kanal ID, Telegram havolasi yoki narxlar noto‘g‘ri.';
+        return jsonResponse(400, { ok: false, error: message }, origin);
+      }
+    }
+
+    if (action === 'save-promo-code') {
+      try {
+        const promoCode = await savePromoCode({ code: body.code, maxUses: body.maxUses });
+        return jsonResponse(200, { ok: true, promoCode, promoCodes: await listPromoCodes() }, origin);
+      } catch {
+        return jsonResponse(400, { ok: false, error: 'Promokod 3–32 ta lotin harfi/raqam va foydalanish limitidan iborat bo‘lishi kerak.' }, origin);
+      }
+    }
+
+    if (action === 'toggle-promo-code') {
+      try {
+        const promoCode = await setPromoCodeEnabled(body.code, body.enabled);
+        if (!promoCode) return jsonResponse(404, { ok: false, error: 'Promokod topilmadi.' }, origin);
+        return jsonResponse(200, { ok: true, promoCode, promoCodes: await listPromoCodes() }, origin);
+      } catch {
+        return jsonResponse(400, { ok: false, error: 'Promokod noto‘g‘ri.' }, origin);
+      }
+    }
+
+    if (action === 'delete-promo-code') {
+      try {
+        const deleted = await deletePromoCode(body.code);
+        return jsonResponse(deleted ? 200 : 404, { ok: deleted, promoCodes: await listPromoCodes(), error: deleted ? undefined : 'Promokod topilmadi.' }, origin);
+      } catch {
+        return jsonResponse(400, { ok: false, error: 'Promokod noto‘g‘ri.' }, origin);
+      }
+    }
 
     if (action === 'save-card') {
       try {
@@ -297,7 +355,9 @@ export async function handler(event) {
         status: 'completed',
         customerNotifiedAt: order.customerNotifiedAt || Date.now(),
       });
-      const coinRes = await creditOrderCoins(updated || { ...order, status: 'completed' });
+      const completedOrder = updated || { ...order, status: 'completed' };
+      const coinRes = await creditOrderCoins(completedOrder);
+      await publishOrderProof(completedOrder);
       if (order.adminChatId && order.adminMessageId) {
         await telegramApi('editMessageCaption', {
           chat_id: order.adminChatId,

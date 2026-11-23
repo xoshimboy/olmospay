@@ -75,6 +75,11 @@ function getPackGroup(gameId: string, pack: PackItem): string {
     if (pack.id.includes('comment')) return 'comments';
     if (pack.id.includes('share')) return 'shares';
     if (pack.id.includes('sub') || pack.id.includes('follow')) return 'followers';
+    if (pack.id.includes('boost')) return 'boost';
+    if (pack.id.includes('history') || pack.id.includes('story')) return 'stories';
+    if (pack.id.includes('voice')) return 'voices';
+    if (pack.id.includes('start')) return 'starts';
+    if (pack.id.includes('auto')) return 'auto';
     return 'other';
   }
   return 'all';
@@ -94,6 +99,11 @@ const PACKAGE_GROUP_LABELS: Record<string, string> = {
   comments: 'Izohlar',
   shares: 'Ulashishlar',
   followers: 'Obunachilar',
+  boost: 'Boost',
+  stories: 'Istoriya',
+  voices: 'Ovozlar',
+  starts: 'Bot start',
+  auto: 'Avto',
   other: 'Boshqa',
 };
 
@@ -181,6 +191,12 @@ export default function App() {
   const [serverID, setServerID] = useState<string>('');
   const [smmQuantity, setSmmQuantity] = useState('1000');
   const [gameFormError, setGameFormError] = useState<string>('');
+  const [promoInput, setPromoInput] = useState('');
+  const [appliedPromo, setAppliedPromo] = useState<{ code: string; discountPercent: number } | null>(null);
+  const [promoNotice, setPromoNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  const [applyingPromo, setApplyingPromo] = useState(false);
+  const [subscriptionPrompt, setSubscriptionPrompt] = useState<{ channelLink: string; needsTelegram?: boolean; error?: string } | null>(null);
+  const [checkingSubscription, setCheckingSubscription] = useState(false);
 
   const [checkoutData, setCheckoutData] = useState<{
     game: GameItem;
@@ -188,6 +204,7 @@ export default function App() {
     playerID: string;
     serverID: string;
     region: GameRegion;
+    promoCode: string;
   } | null>(null);
 
   const [tgUser, setTgUser] = useState<TgUser | null>(null);
@@ -496,6 +513,9 @@ export default function App() {
       setServerID('');
       setSmmQuantity(String(target.packs[0]?.amount || 1000));
       setGameFormError('');
+      setPromoInput('');
+      setAppliedPromo(null);
+      setPromoNotice(null);
       navPage('p-game');
     },
     [games, navPage]
@@ -531,6 +551,22 @@ export default function App() {
       }),
     };
   }, [selectedGame.category, selectedPack, smmQuantity]);
+
+  const checkoutPack = useMemo(() => {
+    if (!selectedOrderPack) return null;
+    if (!appliedPromo) return selectedOrderPack;
+    const priceUzs = Math.round(selectedOrderPack.priceUzs * (100 - appliedPromo.discountPercent) / 100);
+    return {
+      ...selectedOrderPack,
+      priceUzs,
+      coinsReward: calculatePackCoins({
+        amount: selectedOrderPack.amount,
+        unit: selectedOrderPack.unit,
+        category: selectedGame.category,
+        priceUzs,
+      }),
+    };
+  }, [appliedPromo, selectedGame.category, selectedOrderPack]);
 
   const packageGroups = Array.from(new Set(selectedGame.packs.map((pack) => getPackGroup(selectedGame.id, pack))));
   const visiblePacks = selectedGame.packs.filter(
@@ -568,14 +604,82 @@ export default function App() {
     [games, t.sectionCardsTitle, t.sectionGamesTitle, t.sectionSmmTitle, t.sectionTelegramTitle]
   );
 
-  function confirmSelection() {
+  async function ensureChannelSubscription() {
+    setCheckingSubscription(true);
+    try {
+      const res = await fetch('/.netlify/functions/subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setGameFormError(data?.error || t.errNetwork);
+        return false;
+      }
+      if (data.required && !data.subscribed) {
+        setSubscriptionPrompt({
+          channelLink: data.channelLink || '',
+          needsTelegram: Boolean(data.needsTelegram),
+          error: data.error || '',
+        });
+        return false;
+      }
+      setSubscriptionPrompt(null);
+      return true;
+    } catch {
+      setGameFormError(t.errNetwork);
+      return false;
+    } finally {
+      setCheckingSubscription(false);
+    }
+  }
+
+  async function applyPromoCode() {
+    if (!selectedPack || !selectedOrderPack || !promoInput.trim() || applyingPromo) return;
+    setApplyingPromo(true);
+    setPromoNotice(null);
+    try {
+      const res = await fetch('/.netlify/functions/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'validate-promo',
+          promoCode: promoInput.trim(),
+          gameId: selectedGame.id,
+          packId: selectedPack.id,
+          ...(selectedGame.category === 'smm' ? { quantity: selectedOrderPack.amount } : {}),
+          initData,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (data?.code === 'subscription_required') {
+        setSubscriptionPrompt({ channelLink: data.channelLink || '', needsTelegram: Boolean(data.needsTelegram), error: data.error || '' });
+      }
+      if (!res.ok || !data?.ok) {
+        setAppliedPromo(null);
+        setPromoNotice({ ok: false, text: data?.error || 'Promokod qo‘llanmadi.' });
+        return;
+      }
+      setAppliedPromo({ code: data.code, discountPercent: Number(data.discountPercent) });
+      setPromoInput(data.code);
+      setPromoNotice({ ok: true, text: `${data.discountPercent}% chegirma qo‘llandi.` });
+      triggerHaptic('success');
+    } catch {
+      setPromoNotice({ ok: false, text: t.errNetwork });
+    } finally {
+      setApplyingPromo(false);
+    }
+  }
+
+  async function confirmSelection() {
     setGameFormError('');
     if (!selectedPack) {
       setGameFormError(t.errSelectPack);
       triggerHaptic('error');
       return;
     }
-    if (!selectedOrderPack) {
+    if (!checkoutPack) {
       setGameFormError('Miqdor paket minimumidan 1 000 000 gacha bo‘lishi kerak.');
       triggerHaptic('error');
       return;
@@ -594,13 +698,15 @@ export default function App() {
       triggerHaptic('error');
       return;
     }
+    if (!(await ensureChannelSubscription())) return;
 
     setCheckoutData({
       game: selectedGame,
-      pack: selectedOrderPack,
+      pack: checkoutPack,
       playerID: check.cleanId,
       serverID: check.cleanServer,
       region: selectedRegion,
+      promoCode: appliedPromo?.code || '',
     });
     navPage('p-checkout');
   }
@@ -639,11 +745,15 @@ export default function App() {
             setCustomMedia(nextMedia);
             writeCacheJson(MEDIA_CACHE_KEY, nextMedia);
           }}
-          onCardUpdated={(nextCard) => {
-            setCardInfo(nextCard);
-            writeCacheJson(CARD_CACHE_KEY, nextCard);
-          }}
-          onBackToStore={() => {
+            onCardUpdated={(nextCard) => {
+              setCardInfo(nextCard);
+              writeCacheJson(CARD_CACHE_KEY, nextCard);
+            }}
+            onCatalogUpdated={(nextGames) => {
+              setGames(nextGames);
+              writeCacheJson(CATALOG_CACHE_KEY, nextGames);
+            }}
+            onBackToStore={() => {
             window.history.pushState({}, '', '/');
             setIsPanelRoute(false);
           }}
@@ -655,7 +765,7 @@ export default function App() {
   const isSubpage = activePage === 'p-game' || activePage === 'p-checkout';
 
   return (
-    <div className="relative min-h-screen text-[var(--ink)] flex flex-col">
+    <div className="app-enter relative min-h-screen text-[var(--ink)] flex flex-col">
       <AppLoader visible={!isBootReady} />
       {/* Global Animated Apple iOS Mesh Wallpaper */}
       <div
@@ -1044,6 +1154,8 @@ export default function App() {
                             if (nextPack) {
                               setSelectedPackId(nextPack.id);
                               setSmmQuantity(String(nextPack.amount));
+                              setAppliedPromo(null);
+                              setPromoNotice(null);
                             }
                             setGameFormError('');
                           }}
@@ -1080,6 +1192,8 @@ export default function App() {
                       onClick={() => {
                         setSelectedPackId(pack.id);
                         setSmmQuantity(String(pack.amount));
+                        setAppliedPromo(null);
+                        setPromoNotice(null);
                         setGameFormError('');
                         triggerHaptic('light');
                       }}
@@ -1155,24 +1269,43 @@ export default function App() {
               </section>
             )}
 
+            <section aria-labelledby="promo-code-title" className="ios-glass-card rounded-[22px] border border-[#007AFF]/20 p-4 sm:p-5 space-y-3">
+              <label id="promo-code-title" htmlFor="store-promo-code" className="block text-xs font-semibold uppercase tracking-wide text-[var(--ink-muted)]">Promokod</label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  id="store-promo-code"
+                  value={promoInput}
+                  onChange={(event) => {
+                    const value = event.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+                    setPromoInput(value);
+                    if (value !== appliedPromo?.code) setAppliedPromo(null);
+                    setPromoNotice(null);
+                  }}
+                  maxLength={32}
+                  autoCapitalize="characters"
+                  placeholder="Promokodni kiriting"
+                  className="min-h-[46px] min-w-0 flex-1 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3.5 text-sm font-mono-num text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus:outline-none focus:ring-2 focus:ring-[#007AFF]/25"
+                />
+                <button type="button" onClick={applyPromoCode} disabled={applyingPromo || promoInput.trim().length < 3} className="min-h-[46px] px-5 rounded-xl bg-[var(--surface)] text-[var(--ink)] border border-[var(--line)] font-semibold text-sm disabled:opacity-50 cursor-pointer inline-flex items-center justify-center gap-2">
+                  {applyingPromo && <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" aria-hidden="true" />}
+                  {appliedPromo ? 'Qo‘llandi' : 'Qo‘llash'}
+                </button>
+              </div>
+              {promoNotice && <p role="status" aria-live="polite" className={`text-xs font-medium ${promoNotice.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{promoNotice.text}</p>}
+            </section>
+
             {/* Sticky Purchase Bar */}
             <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-[var(--line)] bg-[var(--surface)]/95 backdrop-blur-md px-4 py-3 pb-safe md:static md:rounded-2xl md:border md:p-5">
               <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
                 <div className="min-w-0">
                   <p className="text-xs text-[var(--ink-muted)] truncate">
-                    {selectedOrderPack ? (
+                    {checkoutPack ? (
                       <>
-                        <span>{selectedOrderPack.label}</span>
+                        <span>{checkoutPack.label}</span>
+                        {appliedPromo && <span className="ml-1 rounded-full bg-emerald-500/12 px-2 py-0.5 text-emerald-700 dark:text-emerald-300">-{appliedPromo.discountPercent}%</span>}
                         <span className="text-amber-600 dark:text-[#E5B94C] font-mono-num font-semibold whitespace-nowrap">
                           {' '}
-                          · 🪙 +
-                          {calculatePackCoins({
-                            amount: selectedOrderPack.amount,
-                            unit: selectedOrderPack.unit,
-                            category: selectedGame.category,
-                            priceUzs: selectedOrderPack.priceUzs,
-                          })}{' '}
-                          {t.coinsUnit}
+                          · 🪙 +{checkoutPack.coinsReward || 0} {t.coinsUnit}
                         </span>
                       </>
                     ) : (
@@ -1180,16 +1313,17 @@ export default function App() {
                     )}
                   </p>
                   <p className="font-mono-num text-base sm:text-lg font-bold text-[var(--gold-2)] dark:text-[#E5B94C] whitespace-nowrap">
-                    {selectedOrderPack ? formatUzs(selectedOrderPack.priceUzs, t.uzs) : '—'}
+                    {checkoutPack ? formatUzs(checkoutPack.priceUzs, t.uzs) : '—'}
                   </p>
                 </div>
                 <button
                   type="button"
+                  disabled={checkingSubscription}
                   onClick={confirmSelection}
                   className="min-h-[46px] px-6 rounded-xl bg-[#007AFF] hover:bg-[#0066D6] active:scale-[0.98] text-white dark:bg-[#E5B94C] dark:hover:bg-[#d6a938] dark:text-[#09090B] font-semibold text-sm inline-flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
                 >
-                  <span>{t.confirmOrder}</span>
-                  <ArrowRight size={16} />
+                  <span>{checkingSubscription ? 'Obuna tekshirilmoqda...' : t.confirmOrder}</span>
+                  {checkingSubscription ? <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" aria-hidden="true" /> : <ArrowRight size={16} />}
                 </button>
               </div>
             </div>
@@ -1203,6 +1337,7 @@ export default function App() {
             lang={lang}
             game={checkoutData.game}
             pack={checkoutData.pack}
+            promoCode={checkoutData.promoCode}
             playerID={checkoutData.playerID}
             serverID={checkoutData.serverID}
             region={checkoutData.region}
@@ -1384,6 +1519,30 @@ export default function App() {
 
       {/* Bottom Tab Navigation */}
       {!isSubpage && <BottomNav activePage={activePage} t={t} onNavigate={navPage} />}
+
+      {subscriptionPrompt && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm" role="presentation">
+          <section role="dialog" aria-modal="true" aria-labelledby="subscription-title" className="admin-enter w-full max-w-md rounded-[24px] border border-[var(--line)] bg-[var(--surface)] p-6 shadow-2xl">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#007AFF]/10 text-[#007AFF] dark:bg-[#E5B94C]/15 dark:text-[#E5B94C]"><ShieldCheck size={26} /></div>
+            <h2 id="subscription-title" className="mt-4 text-center font-display text-xl font-bold text-[var(--ink)]">Kanalga obuna bo‘ling</h2>
+            <p className="mt-2 text-center text-sm text-[var(--ink-muted)]">
+              {subscriptionPrompt.needsTelegram
+                ? 'Obuna holatini tekshirish uchun do‘konni Telegram bot ichidan oching.'
+                : 'Xarid qilishdan oldin majburiy Telegram kanaliga obuna bo‘ling.'}
+            </p>
+            {subscriptionPrompt.error && <p role="status" className="mt-3 text-center text-xs text-amber-600 dark:text-amber-300">{subscriptionPrompt.error}</p>}
+            <div className="mt-5 flex flex-col gap-2">
+              {subscriptionPrompt.channelLink && (
+                <a href={subscriptionPrompt.channelLink} target="_blank" rel="noreferrer" className="min-h-[46px] rounded-xl bg-[#007AFF] px-4 text-center text-sm font-semibold leading-[46px] text-white dark:bg-[#E5B94C] dark:text-[#09090B]">Telegram kanalga o‘tish</a>
+              )}
+              <button type="button" disabled={checkingSubscription} onClick={() => void ensureChannelSubscription()} className="min-h-[46px] rounded-xl border border-[var(--line)] bg-[var(--surface-muted)] px-4 text-sm font-semibold text-[var(--ink)] disabled:opacity-50">
+                {checkingSubscription ? 'Tekshirilmoqda…' : 'Obunani qayta tekshirish'}
+              </button>
+              <button type="button" onClick={() => setSubscriptionPrompt(null)} className="min-h-[42px] text-sm font-medium text-[var(--ink-muted)]">Yopish</button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

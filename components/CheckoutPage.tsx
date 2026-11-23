@@ -29,6 +29,7 @@ interface CheckoutPageProps {
   serverID: string;
   region: GameRegion;
   initData: string;
+  promoCode?: string;
   cardInfo?: CardInfo;
   onOrderCreated: (order: OrderHistoryItem) => void;
   onGoHistory: () => void;
@@ -42,6 +43,7 @@ export function CheckoutPage({
   serverID,
   region,
   initData,
+  promoCode = '',
   cardInfo = CARD_INFO,
   onOrderCreated,
   onGoHistory,
@@ -133,6 +135,7 @@ export function CheckoutPage({
           gameId: game.id,
           packId: pack.id,
           price: pack.priceUzs,
+          promoCode,
           ...(game.category === 'smm' ? { quantity: pack.amount } : {}),
           playerID,
           server: serverID,

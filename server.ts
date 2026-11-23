@@ -10,6 +10,7 @@ import { handler as tgWebhookHandler, processTelegramUpdate } from './tg-webhook
 import { handler as adminMediaHandler } from './admin-media.js';
 import { handler as adminPanelHandler } from './admin-panel.js';
 import { handler as userCoinsHandler } from './user-coins.js';
+import { handler as subscriptionHandler } from './subscription.js';
 import { soraRequest, telegramApi, verifyAdminAccess } from './_lib.js';
 import { buildProjectZipBuffer } from './_zip.js';
 
@@ -259,6 +260,7 @@ async function startServer() {
   app.all('/.netlify/functions/admin-media', adaptNetlify(adminMediaHandler));
   app.all('/.netlify/functions/admin-panel', adaptNetlify(adminPanelHandler));
   app.all('/.netlify/functions/user-coins', adaptNetlify(userCoinsHandler));
+  app.all('/.netlify/functions/subscription', adaptNetlify(subscriptionHandler));
 
   app.get('/api/export-zip', (req, res) => {
     const headers: Record<string, string> = {};

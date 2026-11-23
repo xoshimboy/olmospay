@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 import { getStore } from '@netlify/blobs';
-import { delete as deleteRow, desc, eq, like, sql } from 'drizzle-orm';
-import { getDatabase, olmosAppState, olmosOrders, olmosRateLimits } from './db.js';
-import { PAYMENT_CARD, resolveCatalogPack } from './_catalog-map.js';
+import { and, desc, eq, gt, like, lt, sql } from 'drizzle-orm';
+import { getDatabase, olmosAppState, olmosOrders, olmosPromoCodes, olmosRateLimits } from './db.js';
+import { CATALOG, PAYMENT_CARD, resolveCatalogPack } from './_catalog-map.js';
 
 const SORA_BASE_URL = 'https://sorapay.xuss.us/reseller/v1';
 const MAX_RECEIPT_BYTES = 3 * 1024 * 1024; // Keep base64 JSON payload below Vercel's 4.5 MB function limit
@@ -20,6 +20,8 @@ const memoryRateLimits = new Map();
 const memoryServiceMedia = new Map();
 const memoryAdminMessageLogs = [];
 let memoryCardSettings = null;
+let memoryShopSettings = null;
+const memoryPromoCodes = new Map();
 const soraCache = new Map();
 let telegramWebhookConfiguredAt = 0;
 
@@ -815,6 +817,214 @@ export async function saveCardSettings({ number, holder, bank }) {
     memoryCardSettings = next;
   }
   return next;
+}
+
+const DEFAULT_STOREFRONT_SETTINGS = {
+  priceOverrides: {},
+  mandatorySubscription: false,
+  subscriptionChannelId: '',
+  subscriptionLink: '',
+  proofChannelId: '',
+};
+
+function cleanPriceOverrides(input) {
+  const clean = {};
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return clean;
+  for (const game of CATALOG) {
+    const requested = input[game.id];
+    if (!requested || typeof requested !== 'object' || Array.isArray(requested)) continue;
+    const packs = {};
+    for (const pack of game.packs) {
+      const price = Number(requested[pack.id]);
+      if (Number.isSafeInteger(price) && price >= 1 && price <= 100_000_000) packs[pack.id] = price;
+    }
+    if (Object.keys(packs).length) clean[game.id] = packs;
+  }
+  return clean;
+}
+
+function cleanTelegramChannelId(value) {
+  const channelId = String(value || '').trim();
+  if (!channelId) return '';
+  if (/^@[A-Za-z0-9_]{5,32}$/.test(channelId) || /^-100\d{5,16}$/.test(channelId)) return channelId;
+  throw new Error('invalid_telegram_channel');
+}
+
+function cleanTelegramChannelLink(value) {
+  const link = String(value || '').trim();
+  if (!link) return '';
+  try {
+    const url = new URL(link);
+    if (url.protocol === 'https:' && (url.hostname === 't.me' || url.hostname === 'telegram.me')) return url.toString();
+  } catch {
+    // Reject non-URL channel links below.
+  }
+  throw new Error('invalid_telegram_link');
+}
+
+export async function getStorefrontSettings() {
+  const database = getDatabase();
+  const stored = database ? await getAppStateValue('storefront-settings') : memoryShopSettings;
+  return {
+    ...DEFAULT_STOREFRONT_SETTINGS,
+    ...(stored && typeof stored === 'object' ? stored : {}),
+    priceOverrides: cleanPriceOverrides(stored?.priceOverrides),
+  };
+}
+
+export async function saveStorefrontSettings(input = {}) {
+  const current = await getStorefrontSettings();
+  const next = {
+    priceOverrides: input.priceOverrides === undefined ? current.priceOverrides : cleanPriceOverrides(input.priceOverrides),
+    mandatorySubscription: input.mandatorySubscription === undefined
+      ? current.mandatorySubscription
+      : input.mandatorySubscription === true,
+    subscriptionChannelId: input.subscriptionChannelId === undefined
+      ? current.subscriptionChannelId
+      : cleanTelegramChannelId(input.subscriptionChannelId),
+    subscriptionLink: input.subscriptionLink === undefined
+      ? current.subscriptionLink
+      : cleanTelegramChannelLink(input.subscriptionLink),
+    proofChannelId: input.proofChannelId === undefined
+      ? current.proofChannelId
+      : cleanTelegramChannelId(input.proofChannelId),
+  };
+  if (next.mandatorySubscription && !next.subscriptionChannelId) {
+    throw new Error('subscription_channel_required');
+  }
+  const database = getDatabase();
+  if (database) await setAppStateValue('storefront-settings', next);
+  else memoryShopSettings = next;
+  return next;
+}
+
+function normalizePromoCode(value) {
+  const code = String(value || '').trim().toUpperCase();
+  if (!/^[A-Z0-9_-]{3,32}$/.test(code)) throw new Error('invalid_promo_code');
+  return code;
+}
+
+export async function listPromoCodes() {
+  const database = getDatabase();
+  if (database) {
+    return database.select().from(olmosPromoCodes).orderBy(desc(olmosPromoCodes.createdAt)).limit(100);
+  }
+  return [...memoryPromoCodes.values()].sort((a, b) => b.createdAt - a.createdAt).slice(0, 100);
+}
+
+export async function getPromoCode(value) {
+  let code;
+  try {
+    code = normalizePromoCode(value);
+  } catch {
+    return null;
+  }
+  const database = getDatabase();
+  if (database) {
+    const [row] = await database.select().from(olmosPromoCodes).where(eq(olmosPromoCodes.code, code)).limit(1);
+    return row || null;
+  }
+  return memoryPromoCodes.get(code) || null;
+}
+
+export async function savePromoCode({ code: rawCode, maxUses }) {
+  const code = normalizePromoCode(rawCode);
+  const uses = Number(maxUses);
+  if (!Number.isSafeInteger(uses) || uses < 1 || uses > 1_000_000) throw new Error('invalid_promo_limit');
+  const database = getDatabase();
+  if (database) {
+    const [saved] = await database
+      .insert(olmosPromoCodes)
+      .values({ code, discountPercent: 2, maxUses: uses, usedCount: 0, enabled: true, createdAt: Date.now() })
+      .onConflictDoUpdate({
+        target: olmosPromoCodes.code,
+        set: { discountPercent: 2, maxUses: uses, enabled: true },
+      })
+      .returning();
+    return saved;
+  }
+  const existing = memoryPromoCodes.get(code);
+  const saved = { code, discountPercent: 2, maxUses: uses, usedCount: existing?.usedCount || 0, enabled: true, createdAt: existing?.createdAt || Date.now() };
+  memoryPromoCodes.set(code, saved);
+  return saved;
+}
+
+export async function setPromoCodeEnabled(value, enabled) {
+  const code = normalizePromoCode(value);
+  const database = getDatabase();
+  if (database) {
+    await database.update(olmosPromoCodes).set({ enabled: enabled === true }).where(eq(olmosPromoCodes.code, code));
+    return getPromoCode(code);
+  }
+  const existing = memoryPromoCodes.get(code);
+  if (!existing) return null;
+  const updated = { ...existing, enabled: enabled === true };
+  memoryPromoCodes.set(code, updated);
+  return updated;
+}
+
+export async function deletePromoCode(value) {
+  const code = normalizePromoCode(value);
+  const database = getDatabase();
+  if (database) {
+    const [deleted] = await database.delete(olmosPromoCodes).where(eq(olmosPromoCodes.code, code)).returning({ code: olmosPromoCodes.code });
+    return Boolean(deleted);
+  }
+  return memoryPromoCodes.delete(code);
+}
+
+export async function consumePromoCode(value) {
+  const code = normalizePromoCode(value);
+  const database = getDatabase();
+  if (database) {
+    const [used] = await database
+      .update(olmosPromoCodes)
+      .set({ usedCount: sql`${olmosPromoCodes.usedCount} + 1` })
+      .where(and(eq(olmosPromoCodes.code, code), eq(olmosPromoCodes.enabled, true), lt(olmosPromoCodes.usedCount, olmosPromoCodes.maxUses)))
+      .returning();
+    return used || null;
+  }
+  const existing = memoryPromoCodes.get(code);
+  if (!existing?.enabled || existing.usedCount >= existing.maxUses) return null;
+  const updated = { ...existing, usedCount: existing.usedCount + 1 };
+  memoryPromoCodes.set(code, updated);
+  return updated;
+}
+
+export async function releasePromoUse(value) {
+  const code = normalizePromoCode(value);
+  const database = getDatabase();
+  if (database) {
+    await database
+      .update(olmosPromoCodes)
+      .set({ usedCount: sql`${olmosPromoCodes.usedCount} - 1` })
+      .where(and(eq(olmosPromoCodes.code, code), gt(olmosPromoCodes.usedCount, 0)));
+    return;
+  }
+  const existing = memoryPromoCodes.get(code);
+  if (existing && existing.usedCount > 0) memoryPromoCodes.set(code, { ...existing, usedCount: existing.usedCount - 1 });
+}
+
+export async function checkTelegramChannelMembership(userId, settings) {
+  if (!settings?.mandatorySubscription) return { configured: false, subscribed: true, channelLink: '' };
+  const channelId = String(settings.subscriptionChannelId || '').trim();
+  let channelLink = String(settings.subscriptionLink || '').trim();
+  if (!channelLink && channelId.startsWith('@')) channelLink = `https://t.me/${channelId.slice(1)}`;
+  if (!userId || !process.env.TG_BOT_TOKEN || !channelId) {
+    return { configured: true, subscribed: false, channelLink, error: 'Telegram orqali tekshirish imkoni yo‘q.' };
+  }
+  const result = await telegramApi('getChatMember', { chat_id: channelId, user_id: Number(userId) });
+  const member = result?.result;
+  const subscribed = Boolean(result?.ok && (
+    member?.status === 'creator' || member?.status === 'administrator' || member?.status === 'member' ||
+    (member?.status === 'restricted' && member?.is_member === true)
+  ));
+  return {
+    configured: true,
+    subscribed,
+    channelLink,
+    error: result?.ok ? '' : result?.description || 'Kanal a’zoligini tekshirib bo‘lmadi.',
+  };
 }
 
 export function verifyAdminAccess({ headers = {}, initData = '', adminKey = '', adminToken = '' } = {}) {

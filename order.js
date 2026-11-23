@@ -2,7 +2,11 @@ import { calculatePackCoins, resolveCatalogPack } from './_catalog-map.js';
 import { calculateSmmPrice } from './smm-pricing.js';
 import {
   checkRateLimit,
+  checkTelegramChannelMembership,
+  consumePromoCode,
   escapeHtml,
+  getPromoCode,
+  getStorefrontSettings,
   ensureTelegramWebhook,
   formatOrdLine,
   generateOrderRef,
@@ -11,6 +15,7 @@ import {
   jsonResponse,
   sanitizeServer,
   sanitizeTarget,
+  releasePromoUse,
   saveOrder,
   signOrderToken,
   telegramApi,
@@ -53,6 +58,20 @@ export async function handler(event) {
     sourceType = 'miniapp';
   }
 
+  const storefrontSettings = await getStorefrontSettings();
+  if (storefrontSettings.mandatorySubscription) {
+    const membership = await checkTelegramChannelMembership(tgUser?.id, storefrontSettings);
+    if (!membership.subscribed) {
+      return jsonResponse(403, {
+        ok: false,
+        code: 'subscription_required',
+        channelLink: membership.channelLink,
+        needsTelegram: !tgUser,
+        error: membership.error || 'Buyurtma berishdan oldin Telegram kanalga obuna bo‘ling.',
+      }, origin);
+    }
+  }
+
   // 2. Rate limiting (per Telegram user ID or per IP)
   const ip = getClientIp(event.headers);
   const rlKey = tgUser ? `tg:${tgUser.id}` : `ip:${ip}`;
@@ -68,7 +87,7 @@ export async function handler(event) {
   // 3. Server-side authoritative catalog & price validation (never trust client price)
   const gameId = String(body.gameId || body.game || '').trim();
   const packId = String(body.packId || body.item || '').trim();
-  const pack = resolveCatalogPack(gameId, packId);
+  const pack = resolveCatalogPack(gameId, packId, storefrontSettings.priceOverrides);
   if (!pack) {
     return jsonResponse(400, { ok: false, error: 'Tanlangan o‘yin yoki paket topilmadi' }, origin);
   }
@@ -84,15 +103,39 @@ export async function handler(event) {
       }, origin);
     }
   }
-  const expectedPrice = isCustomSmm
+  const basePrice = isCustomSmm
     ? calculateSmmPrice(requestedQuantity, pack.sora.quantity, pack.priceUzs)
     : pack.priceUzs;
+  const promoCodeInput = String(body.promoCode || '').trim();
+  const promo = promoCodeInput ? await getPromoCode(promoCodeInput) : null;
+  const promoValid = Boolean(promo?.enabled && promo.usedCount < promo.maxUses);
+
+  if (body.action === 'validate-promo') {
+    if (!promoValid) {
+      return jsonResponse(400, { ok: false, error: 'Promokod noto‘g‘ri, o‘chirilgan yoki foydalanish limiti tugagan.' }, origin);
+    }
+    return jsonResponse(200, {
+      ok: true,
+      code: promo.code,
+      discountPercent: promo.discountPercent,
+      priceUzs: Math.round(basePrice * (100 - promo.discountPercent) / 100),
+    }, origin);
+  }
+  if (promoCodeInput && !promoValid) {
+    return jsonResponse(400, { ok: false, error: 'Promokod noto‘g‘ri, o‘chirilgan yoki foydalanish limiti tugagan.' }, origin);
+  }
+
+  const promoDiscountPercent = promoValid ? promo.discountPercent : 0;
+  const expectedPrice = Math.round(basePrice * (100 - promoDiscountPercent) / 100);
   const orderPackLabel = isCustomSmm
     ? pack.packLabel.replace(/^[\d\s,._]+/, `${requestedQuantity.toLocaleString('uz-UZ')} `)
     : pack.packLabel;
-  const orderCoinsReward = isCustomSmm
-    ? calculatePackCoins({ amount: requestedQuantity, unit: pack.unit, category: pack.category, priceUzs: expectedPrice })
-    : pack.coinsReward;
+  const orderCoinsReward = calculatePackCoins({
+    amount: isCustomSmm ? requestedQuantity : pack.sora?.quantity || pack.amount,
+    unit: pack.unit,
+    category: pack.category,
+    priceUzs: expectedPrice,
+  });
 
   const requestedRegion = String(body.region || 'global').trim().toLowerCase();
   const supportedFreeFireRegions = new Set(['global', 'cis', 'br', 'eu', 'me']);
@@ -153,6 +196,9 @@ export async function handler(event) {
     packId: pack.packId,
     packLabel: orderPackLabel,
     priceUzs: expectedPrice,
+    basePriceUzs: basePrice,
+    promoCode: promoValid ? promo.code : '',
+    promoDiscountPercent,
     coinsReward: orderCoinsReward,
     playerId: targetCheck.value,
     playerDisplay: targetCheck.display,
@@ -177,7 +223,18 @@ export async function handler(event) {
     updatedAt: Date.now(),
   };
 
-  await saveOrder(orderRecord);
+  if (promoValid) {
+    const reservedPromo = await consumePromoCode(promo.code);
+    if (!reservedPromo) {
+      return jsonResponse(409, { ok: false, error: 'Promokoddan foydalanish limiti tugadi. Sahifani yangilang.' }, origin);
+    }
+  }
+  try {
+    await saveOrder(orderRecord);
+  } catch (error) {
+    if (promoValid) await releasePromoUse(promo.code);
+    throw error;
+  }
 
   // 7. Send receipt & inline approval controls to Telegram Admin (if configured)
   let adminNotified = false;

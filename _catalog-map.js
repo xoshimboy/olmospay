@@ -347,39 +347,79 @@ export const CATALOG = [
         label: '50 Telegram Stars',
         amount: 50,
         unit: 'Stars',
-        priceUzs: 13000,
+        priceUzs: 10500,
         sora: { service: 'gmvci7pul', quantity: 50, type: 'telegram' },
+      },
+      {
+        id: 'tg_stars_75',
+        label: '75 Telegram Stars',
+        amount: 75,
+        unit: 'Stars',
+        priceUzs: 15750,
+        sora: { service: 'gmvci7pul', quantity: 75, type: 'telegram' },
       },
       {
         id: 'tg_stars_100',
         label: '100 Telegram Stars',
         amount: 100,
         unit: 'Stars',
-        priceUzs: 25000,
+        priceUzs: 21000,
         sora: { service: 'gmvci7pul', quantity: 100, type: 'telegram' },
+      },
+      {
+        id: 'tg_stars_150',
+        label: '150 Telegram Stars',
+        amount: 150,
+        unit: 'Stars',
+        priceUzs: 31500,
+        sora: { service: 'gmvci7pul', quantity: 150, type: 'telegram' },
+      },
+      {
+        id: 'tg_stars_200',
+        label: '200 Telegram Stars',
+        amount: 200,
+        unit: 'Stars',
+        priceUzs: 42000,
+        sora: { service: 'gmvci7pul', quantity: 200, type: 'telegram' },
       },
       {
         id: 'tg_stars_250',
         label: '250 Telegram Stars',
         amount: 250,
         unit: 'Stars',
-        priceUzs: 61000,
+        priceUzs: 52500,
         sora: { service: 'gmvci7pul', quantity: 250, type: 'telegram' },
+      },
+      {
+        id: 'tg_stars_350',
+        label: '350 Telegram Stars',
+        amount: 350,
+        unit: 'Stars',
+        priceUzs: 73500,
+        sora: { service: 'gmvci7pul', quantity: 350, type: 'telegram' },
       },
       {
         id: 'tg_stars_500',
         label: '500 Telegram Stars',
         amount: 500,
         unit: 'Stars',
-        priceUzs: 118000,
+        priceUzs: 105000,
         sora: { service: 'gmvci7pul', quantity: 500, type: 'telegram' },
+      },
+      {
+        id: 'tg_stars_750',
+        label: '750 Telegram Stars',
+        amount: 750,
+        unit: 'Stars',
+        priceUzs: 157500,
+        sora: { service: 'gmvci7pul', quantity: 750, type: 'telegram' },
       },
       {
         id: 'tg_stars_1000',
         label: '1000 Telegram Stars',
         amount: 1000,
         unit: 'Stars',
-        priceUzs: 232000,
+        priceUzs: 210000,
         sora: { service: 'gmvci7pul', quantity: 1000, type: 'telegram' },
       },
     ],
@@ -549,7 +589,7 @@ export const CATALOG = [
         label: '1 000 Post ko‘rish (Darhol)',
         amount: 1000,
         unit: 'Views',
-        priceUzs: 1000,
+        priceUzs: 100,
         sora: { service: 'gmvqmt8mo', item: '513d81c82a18', quantity: 1000, type: 'smm' },
       },
       {
@@ -557,15 +597,15 @@ export const CATALOG = [
         label: '1 000 Ijobiy reaksiya',
         amount: 1000,
         unit: 'React',
-        priceUzs: 2000,
+        priceUzs: 200,
         sora: { service: 'gmvqmt8mo', item: 'cc1ade935e0a', quantity: 1000, type: 'smm' },
       },
       {
         id: 'smm_tg_sub_1k',
-        label: '1 000 Obunachi (30 kun kafolat)',
+        label: '1 000 Oddiy obunachi',
         amount: 1000,
         unit: 'Sub',
-        priceUzs: 5000,
+        priceUzs: 3400,
         sora: { service: 'gmvqmt8mo', item: '667198b12637', quantity: 1000, type: 'smm' },
       },
       {
@@ -573,9 +613,22 @@ export const CATALOG = [
         label: '1 000 O‘zbek obunachi (Kafolat)',
         amount: 1000,
         unit: 'Sub',
-        priceUzs: 15000,
+        priceUzs: 8400,
         sora: { service: 'gmvqmt8mo', item: '790e86e3a965', quantity: 1000, type: 'smm' },
       },
+      { id: 'smm_tg_sub_ru_1k', label: '1 000 Rossiya obunachisi', amount: 1000, unit: 'Sub', priceUzs: 5000, sora: null },
+      { id: 'smm_tg_sub_geo_1k', label: '1 000 Davlatlar bo‘yicha obunachi', amount: 1000, unit: 'Sub', priceUzs: 5000, sora: null },
+      { id: 'smm_tg_sub_real_1k', label: '1 000 Real foydalanuvchi', amount: 1000, unit: 'Sub', priceUzs: 83200, sora: null },
+      { id: 'smm_tg_sub_online_1k', label: '1 000 Online obunachi', amount: 1000, unit: 'Sub', priceUzs: 23300, sora: null },
+      { id: 'smm_tg_sub_premium_1k', label: '1 000 Premium obunachi', amount: 1000, unit: 'Sub', priceUzs: 20000, sora: null },
+      { id: 'smm_tg_sub_premium_geo_1k', label: '1 000 Premium (davlatlar)', amount: 1000, unit: 'Sub', priceUzs: 116500, sora: null },
+      { id: 'smm_tg_comments_1k', label: '1 000 Izoh', amount: 1000, unit: 'Comments', priceUzs: 16700, sora: null },
+      { id: 'smm_tg_shares_1k', label: '1 000 Ulashish', amount: 1000, unit: 'Shares', priceUzs: 400, sora: null },
+      { id: 'smm_tg_start_1k', label: '1 000 Bot uchun start', amount: 1000, unit: 'Starts', priceUzs: 1700, sora: null },
+      { id: 'smm_tg_boost_1k', label: '1 000 Boost', amount: 1000, unit: 'Boost', priceUzs: 141500, sora: null },
+      { id: 'smm_tg_history_1k', label: '1 000 Istoriya ko‘rish', amount: 1000, unit: 'Views', priceUzs: 900, sora: null },
+      { id: 'smm_tg_voice_1k', label: '1 000 Ovozlar', amount: 1000, unit: 'Voice', priceUzs: 5000, sora: null },
+      { id: 'smm_tg_auto_1k', label: '1 000 Avto (kanal uchun)', amount: 1000, unit: 'Auto', priceUzs: 100, sora: null },
     ],
   },
   {
@@ -728,12 +781,15 @@ export function calculatePackCoins({ amount = 0, unit = '', category = 'games', 
   return Math.max(1, Math.round(price / 2200));
 }
 
-export function resolveCatalogPack(gameId, packId) {
+export function resolveCatalogPack(gameId, packId, priceOverrides = {}) {
   const game = CATALOG.find((g) => g.id === gameId);
   if (!game) return null;
   const pack = game.packs.find((p) => p.id === packId);
   if (!pack) return null;
-  const priceUzs = Math.round(Number(pack.priceUzs));
+  const override = Number(priceOverrides?.[game.id]?.[pack.id]);
+  const priceUzs = Number.isSafeInteger(override) && override > 0
+    ? override
+    : Math.round(Number(pack.priceUzs));
   const coinsReward = calculatePackCoins({
     amount: pack.amount,
     unit: pack.unit,
@@ -766,7 +822,7 @@ export function resolveCatalogPack(gameId, packId) {
   };
 }
 
-export function getPublicCatalog() {
+export function getPublicCatalog(priceOverrides = {}) {
   return CATALOG.map((game) => ({
     id: game.id,
     name: game.name,
@@ -780,19 +836,23 @@ export function getPublicCatalog() {
     serverLabel: game.serverLabel || null,
     serverPlaceholder: game.serverPlaceholder || null,
     soraService: game.soraService,
-    packs: game.packs.map((p) => ({
+    packs: game.packs.map((p) => {
+      const override = Number(priceOverrides?.[game.id]?.[p.id]);
+      const priceUzs = Number.isSafeInteger(override) && override > 0 ? override : p.priceUzs;
+      return {
       id: p.id,
       label: p.label,
       amount: p.amount,
       unit: p.unit,
-      priceUzs: p.priceUzs,
+      priceUzs,
       coinsReward: calculatePackCoins({
         amount: p.amount,
         unit: p.unit,
         category: game.category,
-        priceUzs: p.priceUzs,
+        priceUzs,
       }),
       autoDelivery: Boolean(p.sora && p.sora.service && (p.sora.item || p.sora.quantity)),
-    })),
+      };
+    }),
   }));
 }

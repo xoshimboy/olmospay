@@ -3,6 +3,7 @@ import { handler as adminPanelHandler } from '../../admin-panel.js';
 import { handler as orderHandler } from '../../order.js';
 import { handler as orderStatusHandler } from '../../order-status.js';
 import { handler as soraHandler } from '../../sora.js';
+import { handler as subscriptionHandler } from '../../subscription.js';
 import { handler as telegramWebhookHandler } from '../../tg-webhook.js';
 import { handler as userCoinsHandler } from '../../user-coins.js';
 import { ensureTelegramWebhook } from '../../_lib.js';
@@ -13,6 +14,7 @@ const handlers = {
   order: orderHandler,
   'order-status': orderStatusHandler,
   sora: soraHandler,
+  subscription: subscriptionHandler,
   'tg-webhook': telegramWebhookHandler,
   'user-coins': userCoinsHandler,
 };

@@ -844,8 +844,26 @@ function cleanPriceOverrides(input) {
 }
 
 function cleanTelegramChannelId(value) {
-  const channelId = String(value || '').trim();
+  let channelId = String(value || '').trim();
   if (!channelId) return '';
+
+  if (/^https:\/\/(?:www\.)?(?:t\.me|telegram\.me)\//i.test(channelId)) {
+    try {
+      const url = new URL(channelId);
+      const [username, extraPath] = url.pathname.split('/').filter(Boolean);
+      if (
+        ['t.me', 'www.t.me', 'telegram.me', 'www.telegram.me'].includes(url.hostname.toLowerCase()) &&
+        username &&
+        !extraPath &&
+        /^[A-Za-z0-9_]{5,32}$/.test(username)
+      ) {
+        channelId = `@${username}`;
+      }
+    } catch {
+      throw new Error('invalid_telegram_channel');
+    }
+  }
+
   if (/^@[A-Za-z0-9_]{5,32}$/.test(channelId) || /^-100\d{5,16}$/.test(channelId)) return channelId;
   throw new Error('invalid_telegram_channel');
 }

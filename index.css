@@ -266,6 +266,10 @@ body {
   animation: content-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+.admin-tab-content {
+  animation: content-enter 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

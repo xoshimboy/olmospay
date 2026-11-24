@@ -831,11 +831,11 @@ export function AdminPanelPage({
             </div>
           )
         ) : (
-          <>
-            {/* Apple iOS Segmented Tab Bar */}
+          <div key={activeTab} className="admin-tab-content space-y-5">
+            {/* Admin section navigation */}
             <nav
               aria-label="Admin bo‘limlari"
-              className="grid grid-cols-4 sm:grid-cols-8 gap-1.5 p-1.5 rounded-[20px] bg-[#E5E5EA]/85 border border-black/[0.04]"
+              className="grid grid-cols-4 lg:grid-cols-8 gap-1.5 p-1.5 rounded-[20px] bg-[#E5E5EA]/85 border border-black/[0.04]"
             >
               {navTabs.map((tab) => {
                 const Icon = tab.icon;
@@ -2002,7 +2002,7 @@ export function AdminPanelPage({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                       <label htmlFor="subscription-channel-id" className="block text-xs font-medium text-[#6C6C70] mb-1.5">Majburiy obuna kanali ID yoki @username</label>
-                      <input id="subscription-channel-id" value={subscriptionChannelId} onChange={(event) => setSubscriptionChannelId(event.target.value)} placeholder="@kanal_nomi yoki -1001234567890" className="w-full min-h-[44px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 font-mono-num text-sm text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]" />
+                      <input id="subscription-channel-id" value={subscriptionChannelId} onChange={(event) => setSubscriptionChannelId(event.target.value)} placeholder="@kanal_nomi, t.me/kanal_nomi yoki -1001234567890" className="w-full min-h-[44px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 font-mono-num text-sm text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]" />
                     </div>
                     <div>
                       <label htmlFor="subscription-channel-link" className="block text-xs font-medium text-[#6C6C70] mb-1.5">Obuna havolasi (ixtiyoriy)</label>
@@ -2010,7 +2010,7 @@ export function AdminPanelPage({
                     </div>
                     <div className="md:col-span-2">
                       <label htmlFor="proof-channel-id" className="block text-xs font-medium text-[#6C6C70] mb-1.5">Bajarilgan buyurtmalar uchun isbot kanali ID yoki @username</label>
-                      <input id="proof-channel-id" value={proofChannelId} onChange={(event) => setProofChannelId(event.target.value)} placeholder="@isbot_kanali yoki -1001234567890" className="w-full min-h-[44px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 font-mono-num text-sm text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]" />
+                      <input id="proof-channel-id" value={proofChannelId} onChange={(event) => setProofChannelId(event.target.value)} placeholder="@isbot_kanali, t.me/kanal yoki -1001234567890" className="w-full min-h-[44px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 font-mono-num text-sm text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]" />
                     </div>
                   </div>
                   <p className="text-xs text-[#6C6C70]">Obuna tekshiruvi uchun botni obuna kanaliga admin qiling. Isbot yuborish uchun botni isbot kanaliga admin qilib, xabar yuborish huquqini bering. Kanalda faqat buyurtma kodi va qisman yashirilgan ID ko‘rsatiladi.</p>
@@ -2057,7 +2057,7 @@ export function AdminPanelPage({
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
       </main>
     </div>

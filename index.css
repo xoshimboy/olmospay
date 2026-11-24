@@ -67,6 +67,17 @@ body {
   backdrop-filter: blur(28px) saturate(190%);
 }
 
+@media (min-width: 600px) and (max-width: 767px) {
+  .ios-bottom-nav {
+    top: max(64px, calc(env(safe-area-inset-top) + 64px));
+    bottom: auto;
+  }
+
+  .tablet-nav-main {
+    padding-top: 6rem;
+  }
+}
+
 .dark .ios-bottom-nav {
   border-color: rgba(255, 255, 255, 0.13);
   background: rgba(26, 27, 33, 0.76);

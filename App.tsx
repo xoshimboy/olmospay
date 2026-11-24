@@ -858,7 +858,7 @@ export default function App() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8 pb-24 md:pb-12">
+      <main className="tablet-nav-main flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-8 pb-24 md:pb-12">
         {/* HOME PAGE */}
         {activePage === 'p-home' && (
           <div className="space-y-8">

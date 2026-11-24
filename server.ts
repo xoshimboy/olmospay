@@ -6,7 +6,7 @@ import { createServer as createViteServer } from 'vite';
 import { handler as soraHandler } from './sora.js';
 import { handler as orderHandler } from './order.js';
 import { handler as orderStatusHandler } from './order-status.js';
-import { handler as tgWebhookHandler, processTelegramUpdate } from './tg-webhook.js';
+import { handler as tgWebhookHandler } from './tg-webhook.js';
 import { handler as adminMediaHandler } from './admin-media.js';
 import { handler as adminPanelHandler } from './admin-panel.js';
 import { handler as userCoinsHandler } from './user-coins.js';
@@ -39,7 +39,7 @@ type BotRuntimeState = {
   botConnected: boolean;
   botError: string | null;
   botUsername: string | null;
-  botMode: 'off' | 'polling' | 'webhook';
+  botMode: 'off' | 'webhook';
   soraConfigured: boolean;
   soraServicesCount: number | null;
 };
@@ -96,15 +96,11 @@ function adaptNetlify(fnHandler: (event: NetlifyEvent) => Promise<NetlifyResult>
   };
 }
 
-let pollingActive = false;
-
 async function startTelegramBotRunner() {
-  if (!process.env.TG_BOT_TOKEN || process.env.NETLIFY === 'true' || process.env.DISABLE_BOT_POLLING === 'true') {
-    if (process.env.DISABLE_BOT_POLLING === 'true' || !process.env.TG_BOT_TOKEN) {
-      runtimeState.botMode = 'off';
-      runtimeState.botConnected = false;
-      runtimeState.botError = process.env.TG_BOT_TOKEN ? null : 'TG_BOT_TOKEN sozlanmagan';
-    }
+  if (!process.env.TG_BOT_TOKEN || process.env.NETLIFY === 'true') {
+    runtimeState.botMode = 'off';
+    runtimeState.botConnected = false;
+    runtimeState.botError = process.env.TG_BOT_TOKEN ? null : 'TG_BOT_TOKEN sozlanmagan';
     return;
   }
 
@@ -121,7 +117,7 @@ async function startTelegramBotRunner() {
     runtimeState.botConnected = true;
     runtimeState.botError = null;
     runtimeState.botUsername = String(me.result.username);
-    if (me?.ok && me?.result?.first_name !== 'Olmos Pay') {
+    if (me.result.first_name !== 'Olmos Pay') {
       try {
         await telegramApi('setMyName', { name: 'Olmos Pay' });
         await telegramApi('setMyShortDescription', {
@@ -152,67 +148,18 @@ async function startTelegramBotRunner() {
       });
     }
 
-    const wh = await telegramApi('getWebhookInfo', {});
-    const whUrl = String(wh?.result?.url || '');
-    const whHasError = Boolean(wh?.result?.last_error_message);
-    const isPreviewOrEmpty =
-      !whUrl ||
-      whUrl.includes('ais-dev-') ||
-      whUrl.includes('ais-pre-') ||
-      whUrl.includes('localhost') ||
-      whUrl.includes('127.0.0.1') ||
-      whHasError ||
-      process.env.TG_USE_POLLING === 'true';
-
-    if (!isPreviewOrEmpty) {
-      runtimeState.botMode = 'webhook';
-      console.log(`[TG Bot] @${runtimeState.botUsername || 'bot'} active in webhook mode`);
-      return;
+    const webhookInfo = await telegramApi('getWebhookInfo', {});
+    const webhookUrl = String(webhookInfo?.result?.url || '');
+    const hasWebhookError = Boolean(webhookInfo?.result?.last_error_message);
+    runtimeState.botMode = webhookUrl && !hasWebhookError ? 'webhook' : 'off';
+    if (runtimeState.botMode === 'webhook') {
+      console.log(`[TG Bot] @${runtimeState.botUsername} active in webhook mode`);
+    } else {
+      runtimeState.botError = hasWebhookError
+        ? String(webhookInfo.result.last_error_message)
+        : 'Telegram webhook hali sozlanmagan';
+      console.error('[TG Bot Webhook]', runtimeState.botError);
     }
-
-    if (whUrl) {
-      await telegramApi('deleteWebhook', { drop_pending_updates: false });
-    }
-
-    runtimeState.botMode = 'polling';
-    pollingActive = true;
-    console.log(`[TG Bot] @${runtimeState.botUsername || 'bot'} active in live polling mode`);
-
-    let offset = 0;
-    const pollLoop = async () => {
-      while (pollingActive) {
-        try {
-          const res = await telegramApi('getUpdates', {
-            offset,
-            timeout: 20,
-            allowed_updates: ['message', 'callback_query'],
-          });
-          if (res?.ok && Array.isArray(res.result)) {
-            for (const update of res.result) {
-              if (typeof update.update_id === 'number' && update.update_id >= offset) {
-                offset = update.update_id + 1;
-              }
-              try {
-                await processTelegramUpdate(update);
-              } catch (err) {
-                console.error('[TG Update Error]', err instanceof Error ? err.message : 'unknown');
-              }
-            }
-          } else if (res?.error_code === 401 || res?.description === 'Unauthorized') {
-            runtimeState.botConnected = false;
-            runtimeState.botMode = 'off';
-            runtimeState.botError = res.description || 'Telegram bot tokeni tasdiqlanmadi';
-            pollingActive = false;
-          } else {
-            await new Promise((r) => setTimeout(r, 3000));
-          }
-        } catch {
-          await new Promise((r) => setTimeout(r, 3000));
-        }
-      }
-    };
-
-    void pollLoop();
   } catch (err) {
     runtimeState.botConnected = false;
     runtimeState.botMode = 'off';
@@ -309,11 +256,6 @@ async function startServer() {
     void startTelegramBotRunner();
   });
 
-  const stopPolling = () => {
-    pollingActive = false;
-  };
-  process.on('SIGINT', stopPolling);
-  process.on('SIGTERM', stopPolling);
 }
 
 startServer();

@@ -15,6 +15,7 @@ import {
   saveStorefrontSettings,
   getAdminMessageLogs,
   jsonResponse,
+  getOrderStatistics,
   listAllOrders,
   listTelegramCustomerIds,
   recordAdminMessageLog,
@@ -25,6 +26,20 @@ import {
   verifyAdminAccess,
 } from './_lib.js';
 import { applySoraStatusOutcome, executeSoraApproval, publishOrderProof } from './tg-webhook.js';
+
+export function isOrderAwaitingPaymentReview(order) {
+  return Boolean(order && ['pending', 'manual_pending'].includes(order.status));
+}
+
+function formatSoraError(result) {
+  const status = Number(result?.status || 0);
+  const code = String(result?.error?.code || '').trim();
+  if (status === 401 || status === 403) return `HTTP ${status} · Sora API kaliti yoki ruxsati rad etildi.`;
+  if (status === 429) return `HTTP 429 · Sora API so‘rov limiti vaqtincha to‘ldi.`;
+  return [status ? `HTTP ${status}` : '', code, result?.error?.message || 'Sora API bilan aloqa yo‘q.']
+    .filter(Boolean)
+    .join(' · ');
+}
 
 export async function handler(event) {
   const origin = event.headers?.origin || event.headers?.Origin || '';
@@ -76,10 +91,11 @@ export async function handler(event) {
   }
 
   if (event.httpMethod === 'GET') {
-    const [orders, card, soraMe, soraSvc, tgMe, customerIds, messageLogs, storefrontSettings, promoCodes] = await Promise.all([
+    const [orders, stats, card, soraMe, soraSvc, tgMe, customerIds, messageLogs, storefrontSettings, promoCodes] = await Promise.all([
       listAllOrders(60),
+      getOrderStatistics(),
       getCardSettings(),
-      soraRequest('/me', { method: 'GET' }),
+      soraRequest('/me', { method: 'GET', useCache: true }),
       soraRequest('/services', { method: 'GET', useCache: true }),
       process.env.TG_BOT_TOKEN ? telegramApi('getMe', {}) : Promise.resolve(null),
       listTelegramCustomerIds(),
@@ -89,37 +105,13 @@ export async function handler(event) {
     ]);
     const webhook = await ensureTelegramWebhook();
 
-    let completedOrders = 0;
-    let pendingOrders = 0;
-    let processingOrders = 0;
-    let canceledOrders = 0;
-    let totalRevenueUzs = 0;
-
-    for (const o of orders) {
-      if (o.status === 'completed') {
-        completedOrders += 1;
-        totalRevenueUzs += Number(o.priceUzs || 0);
-      } else if (o.status === 'canceled') {
-        canceledOrders += 1;
-      } else if (o.status === 'processing') {
-        processingOrders += 1;
-      } else {
-        pendingOrders += 1;
-      }
-    }
-
     return jsonResponse(
       200,
       {
         ok: true,
         authMode: auth.mode,
         stats: {
-          totalOrders: orders.length,
-          completedOrders,
-          pendingOrders,
-          processingOrders,
-          canceledOrders,
-          totalRevenueUzs,
+          ...stats,
           uniqueCustomers: customerIds.length,
           storeServicesCount: CATALOG.length,
         },
@@ -138,12 +130,16 @@ export async function handler(event) {
           dailyLimit: soraMe.ok ? soraMe.data?.daily_limit ?? 0 : null,
           servicesCount: soraSvc.ok && Array.isArray(soraSvc.data?.services) ? soraSvc.data.services.length : 0,
           services: soraSvc.ok && Array.isArray(soraSvc.data?.services) ? soraSvc.data.services : [],
-          error: !soraMe.ok ? soraMe.error?.message || soraMe.error?.code : null,
+          error: !soraMe.ok ? formatSoraError(soraMe) : null,
         },
         bot: {
           configured: Boolean(process.env.TG_BOT_TOKEN),
-          connected: Boolean(tgMe?.ok),
-          error: tgMe?.ok ? null : tgMe?.description || (process.env.TG_BOT_TOKEN ? 'Telegram bot bilan aloqa yo‘q' : 'TG_BOT_TOKEN sozlanmagan'),
+          connected: Boolean(tgMe?.ok && webhook.ok),
+          error: !tgMe?.ok
+            ? tgMe?.description || (process.env.TG_BOT_TOKEN ? 'Telegram bot bilan aloqa yo‘q' : 'TG_BOT_TOKEN sozlanmagan')
+            : !webhook.ok
+              ? webhook.error || 'Telegram webhook hali ishlamayapti.'
+              : null,
           adminIdSet: Boolean(process.env.TG_ADMIN_ID),
           username: tgMe?.ok && tgMe.result?.username ? tgMe.result.username : null,
           webhookConfigured: Boolean(webhook.ok),
@@ -170,7 +166,9 @@ export async function handler(event) {
         const reason = error instanceof Error ? error.message : '';
         const message = reason === 'subscription_channel_required'
           ? 'Majburiy obunani yoqish uchun kanal ID yoki @username kiriting.'
-          : 'Kanal ID, Telegram havolasi yoki narxlar noto‘g‘ri.';
+          : reason === 'invalid_admin_contact'
+            ? 'Admin kontakti uchun @username yoki https://t.me/username kiriting.'
+            : 'Kanal ID, Telegram havolasi yoki narxlar noto‘g‘ri.';
         return jsonResponse(400, { ok: false, error: message }, origin);
       }
     }
@@ -327,6 +325,16 @@ export async function handler(event) {
     }
 
     if (action === 'reject-order') {
+      if (order.status === 'canceled') {
+        return jsonResponse(200, { ok: true, order, alreadyProcessed: true }, origin);
+      }
+      if (!isOrderAwaitingPaymentReview(order)) {
+        return jsonResponse(409, {
+          ok: false,
+          code: 'order_not_reviewable',
+          error: 'Bu buyurtma allaqachon ko‘rib chiqilgan yoki bajarilmoqda.',
+        }, origin);
+      }
       const updated = await updateOrder(ref, {
         status: 'canceled',
         customerNotifiedAt: order.customerNotifiedAt || Date.now(),
@@ -351,6 +359,16 @@ export async function handler(event) {
     }
 
     if (action === 'manual-done') {
+      if (order.status === 'completed') {
+        return jsonResponse(200, { ok: true, order, coinsAwarded: 0, alreadyProcessed: true }, origin);
+      }
+      if (!isOrderAwaitingPaymentReview(order)) {
+        return jsonResponse(409, {
+          ok: false,
+          code: 'order_not_reviewable',
+          error: 'Bu buyurtma allaqachon ko‘rib chiqilgan yoki bajarilmoqda.',
+        }, origin);
+      }
       const updated = await updateOrder(ref, {
         status: 'completed',
         customerNotifiedAt: order.customerNotifiedAt || Date.now(),
@@ -415,7 +433,14 @@ export async function handler(event) {
 
     if (action === 'approve-order') {
       if (order.status === 'processing' || order.status === 'completed' || order.status === 'canceled') {
-        return jsonResponse(200, { ok: true, order }, origin);
+        return jsonResponse(200, { ok: true, order, alreadyProcessed: true }, origin);
+      }
+      if (!isOrderAwaitingPaymentReview(order)) {
+        return jsonResponse(409, {
+          ok: false,
+          code: 'order_not_reviewable',
+          error: 'Bu buyurtma allaqachon ko‘rib chiqilgan yoki bajarilmoqda.',
+        }, origin);
       }
 
       const res = await executeSoraApproval({

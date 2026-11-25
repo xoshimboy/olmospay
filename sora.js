@@ -23,7 +23,11 @@ export async function handler(event) {
         'Cache-Control': 'public, max-age=30, stale-while-revalidate=120',
         ...getCorsHeaders(origin),
       },
-      body: JSON.stringify({ ok: true, games: getPublicCatalog(settings.priceOverrides) }),
+      body: JSON.stringify({
+        ok: true,
+        games: getPublicCatalog(settings.priceOverrides),
+        adminContactLink: settings.adminContactLink || '',
+      }),
     };
   }
 

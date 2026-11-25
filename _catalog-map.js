@@ -804,6 +804,7 @@ export function resolveCatalogPack(gameId, packId, priceOverrides = {}) {
     requiresServer: Boolean(game.requiresServer),
     packId: pack.id,
     packLabel: pack.label,
+    amount: Number(pack.amount),
     unit: pack.unit,
     priceUzs,
     coinsReward,

@@ -15,6 +15,11 @@ import {
   rememberTelegramCustomer,
   updateOrder,
 } from './_lib.js';
+import {
+  getDeveloperSupportInvoice,
+  recordDeveloperSupportDonation,
+  updateDeveloperSupportInvoice,
+} from './support-store.js';
 
 const LOW_BALANCE_THRESHOLD_UZS = 100_000;
 const activePollers = new Set();
@@ -69,6 +74,56 @@ async function notifyCustomer(tgUserId, text) {
     text,
     parse_mode: 'HTML',
   });
+}
+
+async function handleSupportPreCheckout(query) {
+  const ref = String(query.invoice_payload || '');
+  const invoice = await getDeveloperSupportInvoice(ref);
+  const valid = Boolean(
+    invoice &&
+      invoice.status === 'pending' &&
+      invoice.currency === 'XTR' &&
+      Number(query.total_amount) === Number(invoice.stars) &&
+      String(query.from?.id || '') === String(invoice.donorId)
+  );
+  await telegramApi('answerPreCheckoutQuery', {
+    pre_checkout_query_id: query.id,
+    ok: valid,
+    ...(!valid ? { error_message: 'Invoice muddati tugagan yoki ma’lumotlari mos emas. Yangidan urinib ko‘ring.' } : {}),
+  });
+}
+
+async function handleSupportPayment(message) {
+  const payment = message.successful_payment;
+  const ref = String(payment.invoice_payload || '');
+  const invoice = await getDeveloperSupportInvoice(ref);
+  if (
+    !invoice ||
+    invoice.status !== 'pending' ||
+    invoice.currency !== 'XTR' ||
+    Number(payment.total_amount) !== Number(invoice.stars) ||
+    String(message.from?.id || '') !== String(invoice.donorId)
+  ) {
+    return;
+  }
+
+  const paymentChargeId = String(payment.telegram_payment_charge_id || `support:${ref}`);
+  const paidAt = Date.now();
+  await recordDeveloperSupportDonation({
+    ref,
+    status: 'paid',
+    donorId: String(invoice.donorId),
+    name: String(invoice.name || 'Telegram foydalanuvchisi').slice(0, 80),
+    stars: Number(invoice.stars),
+    message: String(invoice.message || '').slice(0, 250),
+    paymentChargeId,
+    createdAt: paidAt,
+  });
+  await updateDeveloperSupportInvoice(ref, { status: 'paid', paidAt, paymentChargeId });
+  await notifyCustomer(
+    message.from?.id,
+    `⭐ <b>${Number(invoice.stars).toLocaleString('uz-UZ')} Stars bilan qo‘llab-quvvatlaganingiz uchun rahmat!</b> Sovg‘angiz va xabaringiz umumiy reytingda ko‘rinadi.`
+  );
 }
 
 export async function publishOrderProof(order) {
@@ -442,8 +497,17 @@ export async function processTelegramUpdate(update) {
   if (!update || typeof update !== 'object') return;
   const adminId = String(process.env.TG_ADMIN_ID || '').trim();
 
+  if (update.pre_checkout_query) {
+    await handleSupportPreCheckout(update.pre_checkout_query);
+    return;
+  }
+
   // 1. Incoming text commands (customers & admin)
   if (update.message && update.message.chat) {
+    if (update.message.successful_payment) {
+      await handleSupportPayment(update.message);
+      return;
+    }
     const chatId = update.message.chat.id;
     const fromUser = update.message.from;
     const text = String(update.message.text || '').trim();

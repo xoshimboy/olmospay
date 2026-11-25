@@ -1,5 +1,6 @@
 import { calculatePackCoins, resolveCatalogPack } from './_catalog-map.js';
 import { calculateSmmPrice } from './smm-pricing.js';
+import { TERMS_VERSION } from './data/terms.js';
 import {
   checkRateLimit,
   checkTelegramChannelMembership,
@@ -7,6 +8,7 @@ import {
   escapeHtml,
   getPromoCode,
   getStorefrontSettings,
+  getTermsAcceptance,
   ensureTelegramWebhook,
   formatOrdLine,
   generateOrderRef,
@@ -58,6 +60,26 @@ export async function handler(event) {
     sourceType = 'miniapp';
   }
 
+  if (String(body.termsVersion || '') !== TERMS_VERSION) {
+    return jsonResponse(403, {
+      ok: false,
+      code: 'terms_required',
+      termsVersion: TERMS_VERSION,
+      error: 'Buyurtma berishdan oldin foydalanish qoidalarini qabul qiling.',
+    }, origin);
+  }
+  if (tgUser) {
+    const acceptance = await getTermsAcceptance(tgUser.id);
+    if (acceptance?.version !== TERMS_VERSION) {
+      return jsonResponse(403, {
+        ok: false,
+        code: 'terms_required',
+        termsVersion: TERMS_VERSION,
+        error: 'Foydalanish qoidalarini qayta qabul qiling.',
+      }, origin);
+    }
+  }
+
   const storefrontSettings = await getStorefrontSettings();
   if (storefrontSettings.mandatorySubscription) {
     const membership = await checkTelegramChannelMembership(tgUser?.id, storefrontSettings);
@@ -92,19 +114,19 @@ export async function handler(event) {
     return jsonResponse(400, { ok: false, error: 'Tanlangan o‘yin yoki paket topilmadi' }, origin);
   }
 
-  const isCustomSmm = pack.category === 'smm' && pack.sora?.type === 'smm' && Number.isSafeInteger(pack.sora.quantity);
+  const isCustomSmm = pack.category === 'smm';
   let requestedQuantity;
   if (isCustomSmm) {
     requestedQuantity = Number(body.quantity);
-    if (!Number.isSafeInteger(requestedQuantity) || requestedQuantity < pack.sora.quantity || requestedQuantity > 1_000_000) {
+    if (!Number.isSafeInteger(requestedQuantity) || requestedQuantity < pack.amount || requestedQuantity > 1_000_000) {
       return jsonResponse(400, {
         ok: false,
-        error: `Miqdor ${pack.sora.quantity.toLocaleString('uz-UZ')} dan 1 000 000 gacha butun son bo‘lishi kerak.`,
+        error: `Miqdor ${pack.amount.toLocaleString('uz-UZ')} dan 1 000 000 gacha butun son bo‘lishi kerak.`,
       }, origin);
     }
   }
   const basePrice = isCustomSmm
-    ? calculateSmmPrice(requestedQuantity, pack.sora.quantity, pack.priceUzs)
+    ? calculateSmmPrice(requestedQuantity, pack.amount, pack.priceUzs)
     : pack.priceUzs;
   const promoCodeInput = String(body.promoCode || '').trim();
   const promo = promoCodeInput ? await getPromoCode(promoCodeInput) : null;

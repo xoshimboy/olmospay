@@ -28,6 +28,20 @@ export function validateSupportRequest(starsInput, messageInput = '') {
   return { ok: true, stars, message };
 }
 
+export function buildSupportInvoicePayload({ chatId, ref, stars, message }) {
+  const details = String(message || 'Loyiha rivoji uchun ❤️').trim();
+  const description = Array.from(`${stars} Stars — ${details}`).slice(0, 255).join('');
+  return {
+    chat_id: String(chatId),
+    title: 'Loyihani qo‘llab-quvvatlash',
+    description,
+    payload: ref,
+    provider_token: '',
+    currency: 'XTR',
+    prices: [{ label: `${stars} Stars`, amount: stars }],
+  };
+}
+
 export function publicSupportSummary(donations) {
   const supporters = new Map();
   let totalStars = 0;
@@ -107,19 +121,17 @@ export async function handler(event) {
   };
   await saveDeveloperSupportInvoice(ref, donation);
 
-  const invoice = await telegramApi('createInvoiceLink', {
-    title: 'Dasturchini qo‘llab-quvvatlash',
-    description: `${validated.stars} Telegram Stars bilan qo‘llab-quvvatlash`,
-    payload: ref,
-    provider_token: '',
-    currency: 'XTR',
-    prices: [{ label: 'Dasturchi uchun Stars', amount: validated.stars }],
-  });
+  const invoice = await telegramApi('sendInvoice', buildSupportInvoicePayload({
+    chatId: auth.user.id,
+    ref,
+    stars: validated.stars,
+    message: validated.message,
+  }));
 
-  if (!invoice?.ok || typeof invoice.result !== 'string') {
+  if (!invoice?.ok) {
     await updateDeveloperSupportInvoice(ref, { status: 'failed' });
-    return jsonResponse(502, { ok: false, error: invoice?.description || 'Telegram Stars invoice yaratilmadi.' }, origin);
+    return jsonResponse(502, { ok: false, error: invoice?.description || 'Telegram Stars invoice yuborilmadi.' }, origin);
   }
 
-  return jsonResponse(200, { ok: true, invoiceUrl: invoice.result }, origin);
+  return jsonResponse(200, { ok: true, sent: true }, origin);
 }

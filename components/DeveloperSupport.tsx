@@ -2,7 +2,6 @@ import { useState, type FormEvent } from 'react';
 import useSWR from 'swr';
 import { Code2, Crown, Gift, LoaderCircle, Send, Star, Trophy } from 'lucide-react';
 import type { Lang } from '../types';
-import { getTg } from '../utils/telegram';
 
 interface SupportData {
   ok: boolean;
@@ -28,10 +27,8 @@ const COPY = {
     people: 'qo‘llab-quvvatlovchi',
     gifts: 'sovg‘a',
     total: 'Jami berildi',
-    paid: 'To‘lov muvaffaqiyatli. Rahmat!',
-    cancelled: 'To‘lov bekor qilindi.',
-    failed: 'To‘lov yakunlanmadi. Qayta urinib ko‘ring.',
-    error: 'Invoice yaratilmadi. Birozdan so‘ng qayta urinib ko‘ring.',
+    invoiceSent: 'To‘lov so‘rovi botga yuborildi. Bot chatiga o‘tib, to‘lovni tasdiqlang.',
+    error: 'To‘lov so‘rovi yuborilmadi. Birozdan so‘ng qayta urinib ko‘ring.',
   },
   ru: {
     title: 'Поддержите разработчика',
@@ -47,10 +44,8 @@ const COPY = {
     people: 'поддержали',
     gifts: 'подарок',
     total: 'Всего отправлено',
-    paid: 'Оплата прошла. Спасибо!',
-    cancelled: 'Оплата отменена.',
-    failed: 'Оплата не завершена. Попробуйте снова.',
-    error: 'Не удалось создать счёт. Попробуйте позже.',
+    invoiceSent: 'Запрос на оплату отправлен боту. Перейдите в чат с ботом и подтвердите оплату.',
+    error: 'Не удалось отправить запрос на оплату. Попробуйте позже.',
   },
   en: {
     title: 'Support the developer',
@@ -66,10 +61,8 @@ const COPY = {
     people: 'supporters',
     gifts: 'gifts',
     total: 'Stars gifted',
-    paid: 'Payment successful. Thank you!',
-    cancelled: 'Payment cancelled.',
-    failed: 'Payment did not complete. Please try again.',
-    error: 'Could not create an invoice. Please try again later.',
+    invoiceSent: 'The payment request was sent to the bot. Open the bot chat to complete payment.',
+    error: 'Could not send the payment request. Please try again later.',
   },
 } as const;
 
@@ -121,26 +114,12 @@ export function DeveloperSupport({ initData, lang }: { initData: string; lang: L
         body: JSON.stringify({ initData, stars: amount, message }),
       });
       const result = await response.json();
-      if (!response.ok || !result?.ok || typeof result.invoiceUrl !== 'string') {
+      if (!response.ok || !result?.ok || result.sent !== true) {
         throw new Error(result?.error || t.error);
       }
-      const telegram = getTg();
-      if (telegram?.openInvoice) {
-        telegram.openInvoice(result.invoiceUrl, (status) => {
-          if (status === 'paid') {
-            setNotice({ tone: 'success', text: t.paid });
-            setMessage('');
-            void mutate();
-            window.setTimeout(() => void mutate(), 2500);
-          } else if (status === 'cancelled') {
-            setNotice({ tone: 'error', text: t.cancelled });
-          } else if (status === 'failed') {
-            setNotice({ tone: 'error', text: t.failed });
-          }
-        });
-      } else {
-        window.open(result.invoiceUrl, '_blank', 'noopener,noreferrer');
-      }
+      setNotice({ tone: 'success', text: t.invoiceSent });
+      setMessage('');
+      void mutate();
     } catch (error) {
       setNotice({ tone: 'error', text: error instanceof Error ? error.message : t.error });
     } finally {

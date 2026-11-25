@@ -19,6 +19,7 @@ const memoryTelegramCustomers = new Map();
 const memoryRateLimits = new Map();
 const memoryServiceMedia = new Map();
 const memoryAdminMessageLogs = [];
+const memoryTermsAcceptances = new Map();
 let memoryCardSettings = null;
 let memoryShopSettings = null;
 const memoryPromoCodes = new Map();
@@ -47,6 +48,28 @@ async function setAppStateValue(key, value) {
       set: { value, updatedAt: new Date() },
     });
   return value;
+}
+
+export async function getTermsAcceptance(tgUserId) {
+  const id = String(tgUserId || '').trim();
+  if (!/^\d{1,20}$/.test(id)) return null;
+  const key = `terms-acceptance:${id}`;
+  const database = getDatabase();
+  return database ? getAppStateValue(key) : memoryTermsAcceptances.get(key) || null;
+}
+
+export async function saveTermsAcceptance(tgUserId, version) {
+  const id = String(tgUserId || '').trim();
+  const cleanVersion = String(version || '').trim();
+  if (!/^\d{1,20}$/.test(id) || !/^\d{4}-\d{2}-\d{2}$/.test(cleanVersion)) {
+    throw new Error('invalid_terms_acceptance');
+  }
+  const record = { version: cleanVersion, acceptedAt: Date.now() };
+  const key = `terms-acceptance:${id}`;
+  const database = getDatabase();
+  if (database) await setAppStateValue(key, record);
+  else memoryTermsAcceptances.set(key, record);
+  return record;
 }
 
 export function getTelegramWebhookSecret() {
@@ -536,6 +559,67 @@ export async function listAllOrders(limit = 60) {
   return orders.filter(Boolean);
 }
 
+export function summarizeOrderStatistics(orders) {
+  const stats = {
+    totalOrders: 0,
+    completedOrders: 0,
+    pendingOrders: 0,
+    processingOrders: 0,
+    canceledOrders: 0,
+    totalRevenueUzs: 0,
+  };
+
+  for (const order of orders || []) {
+    if (!order || typeof order !== 'object') continue;
+    stats.totalOrders += 1;
+    if (order.status === 'completed') {
+      stats.completedOrders += 1;
+      const amount = Number(order.priceUzs);
+      if (Number.isFinite(amount) && amount > 0) stats.totalRevenueUzs += amount;
+    } else if (order.status === 'canceled') {
+      stats.canceledOrders += 1;
+    } else if (order.status === 'processing') {
+      stats.processingOrders += 1;
+    } else {
+      stats.pendingOrders += 1;
+    }
+  }
+
+  return stats;
+}
+
+export async function getOrderStatistics() {
+  const database = getDatabase();
+  if (!database) return summarizeOrderStatistics(await listAllOrders(10_000));
+
+  const result = await database.execute(sql`
+    SELECT
+      count(*)::int AS "totalOrders",
+      count(*) FILTER (WHERE ${olmosOrders.orderData} ->> 'status' = 'completed')::int AS "completedOrders",
+      count(*) FILTER (WHERE ${olmosOrders.orderData} ->> 'status' = 'processing')::int AS "processingOrders",
+      count(*) FILTER (WHERE ${olmosOrders.orderData} ->> 'status' = 'canceled')::int AS "canceledOrders",
+      count(*) FILTER (WHERE coalesce(${olmosOrders.orderData} ->> 'status', '') NOT IN ('completed', 'processing', 'canceled'))::int AS "pendingOrders",
+      coalesce(sum(
+        CASE
+          WHEN ${olmosOrders.orderData} ->> 'status' = 'completed'
+            AND ${olmosOrders.orderData} ->> 'priceUzs' ~ '^[0-9]+([.][0-9]+)?$'
+          THEN (${olmosOrders.orderData} ->> 'priceUzs')::numeric
+          ELSE 0
+        END
+      ), 0)::double precision AS "totalRevenueUzs"
+    FROM ${olmosOrders}
+  `);
+  const row = result.rows?.[0] || {};
+  return {
+    totalOrders: Number(row.totalOrders || 0),
+    completedOrders: Number(row.completedOrders || 0),
+    pendingOrders: Number(row.pendingOrders || 0),
+    processingOrders: Number(row.processingOrders || 0),
+    canceledOrders: Number(row.canceledOrders || 0),
+    totalRevenueUzs: Number(row.totalRevenueUzs || 0),
+  };
+}
+
 export async function rememberTelegramCustomer(user) {
   const id = String(user?.id || '').trim();
   if (!/^\d{1,20}$/.test(id)) return null;
@@ -825,6 +909,7 @@ const DEFAULT_STOREFRONT_SETTINGS = {
   subscriptionChannelId: '',
   subscriptionLink: '',
   proofChannelId: '',
+  adminContactLink: '',
 };
 
 function cleanPriceOverrides(input) {
@@ -880,6 +965,29 @@ function cleanTelegramChannelLink(value) {
   throw new Error('invalid_telegram_link');
 }
 
+function cleanAdminContactLink(value) {
+  const contact = String(value || '').trim();
+  if (!contact) return '';
+  const username = contact.startsWith('@') ? contact.slice(1) : contact;
+  if (/^[A-Za-z0-9_]{5,32}$/.test(username)) return `https://t.me/${username}`;
+  try {
+    const url = new URL(contact);
+    const [pathUsername, ...extraPath] = url.pathname.split('/').filter(Boolean);
+    if (
+      url.protocol === 'https:' &&
+      ['t.me', 'telegram.me'].includes(url.hostname.toLowerCase()) &&
+      pathUsername &&
+      /^[A-Za-z0-9_]{5,32}$/.test(pathUsername) &&
+      extraPath.length === 0 &&
+      !url.search &&
+      !url.hash
+    ) return `https://t.me/${pathUsername}`;
+  } catch {
+    // Reject non-Telegram contacts below.
+  }
+  throw new Error('invalid_admin_contact');
+}
+
 export async function getStorefrontSettings() {
   const database = getDatabase();
   const stored = database ? await getAppStateValue('storefront-settings') : memoryShopSettings;
@@ -906,6 +1014,9 @@ export async function saveStorefrontSettings(input = {}) {
     proofChannelId: input.proofChannelId === undefined
       ? current.proofChannelId
       : cleanTelegramChannelId(input.proofChannelId),
+    adminContactLink: input.adminContactLink === undefined
+      ? current.adminContactLink
+      : cleanAdminContactLink(input.adminContactLink),
   };
   if (next.mandatorySubscription && !next.subscriptionChannelId) {
     throw new Error('subscription_channel_required');
@@ -1157,8 +1268,16 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export function normalizeSoraApiKey(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^[\"']|[\"']$/g, '')
+    .replace(/^(?:Bearer\s+|X-API-Key\s*:\s*)/i, '')
+    .trim();
+}
+
 export async function soraRequest(pathAndQuery, { method = 'GET', body = null, useCache = false, retryCount = 0 } = {}) {
-  const apiKey = process.env.SORA_API_KEY;
+  const apiKey = normalizeSoraApiKey(process.env.SORA_API_KEY);
   if (!apiKey) {
     return {
       ok: false,
@@ -1176,15 +1295,25 @@ export async function soraRequest(pathAndQuery, { method = 'GET', body = null, u
   }
 
   const url = `${SORA_BASE_URL}${pathAndQuery}`;
-  const response = await fetch(url, {
-    method,
-    headers: {
-      'X-API-Key': apiKey,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      method,
+      headers: {
+        'X-API-Key': apiKey,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      error: { code: 'network_error', message: 'Sora API bilan aloqa o‘rnatilmadi.' },
+    };
+  }
 
   let data = null;
   try {
@@ -1226,12 +1355,17 @@ export async function telegramApi(method, payload, isMultipart = false) {
   }
 
   const url = `https://api.telegram.org/bot${token}/${method}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: isMultipart ? undefined : { 'Content-Type': 'application/json' },
-    body: isMultipart ? payload : JSON.stringify(payload),
-  });
-  return res.json().catch(() => ({ ok: false, description: 'Invalid Telegram response' }));
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: isMultipart ? undefined : { 'Content-Type': 'application/json' },
+      body: isMultipart ? payload : JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000),
+    });
+    return res.json().catch(() => ({ ok: false, description: 'Telegram javobi o‘qilmadi' }));
+  } catch {
+    return { ok: false, description: 'Telegram API bilan aloqa o‘rnatilmadi.' };
+  }
 }
 
 async function ensureTelegramCommandScopes() {
@@ -1292,11 +1426,17 @@ export async function ensureTelegramWebhook() {
 
   const url = `${baseUrl}/.netlify/functions/tg-webhook`;
   const info = await telegramApi('getWebhookInfo', {});
-  if (!info?.ok || info.result?.url !== url) {
+  const configuredUpdates = Array.isArray(info?.result?.allowed_updates) ? info.result.allowed_updates : [];
+  const needsUpdate =
+    !info?.ok ||
+    info.result?.url !== url ||
+    !configuredUpdates.includes('pre_checkout_query') ||
+    Boolean(info.result?.last_error_message);
+  if (needsUpdate) {
     const result = await telegramApi('setWebhook', {
       url,
       secret_token: getTelegramWebhookSecret(),
-      allowed_updates: ['message', 'callback_query'],
+      allowed_updates: ['message', 'callback_query', 'pre_checkout_query'],
     });
     if (!result?.ok) {
       return { ok: false, error: result?.description || 'Telegram webhook setup failed' };

@@ -105,6 +105,7 @@ export interface TelegramWebApp {
   colorScheme?: 'dark' | 'light';
   expand?: () => void;
   ready?: () => void;
+  openInvoice?: (url: string, callback?: (status: 'paid' | 'cancelled' | 'failed') => void) => void;
   BackButton?: {
     show: () => void;
     hide: () => void;

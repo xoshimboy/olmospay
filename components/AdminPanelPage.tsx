@@ -79,6 +79,7 @@ interface StorefrontSettings {
   subscriptionChannelId: string;
   subscriptionLink: string;
   proofChannelId: string;
+  adminContactLink: string;
 }
 
 interface AdminMessageLog {
@@ -145,6 +146,7 @@ interface AdminPanelPageProps {
   onMediaUpdated: (media: Record<string, string>) => void;
   onCardUpdated: (card: CardInfo) => void;
   onCatalogUpdated: (games: GameItem[]) => void;
+  onAdminContactUpdated: (link: string) => void;
   onBackToStore?: () => void;
 }
 
@@ -162,6 +164,7 @@ export function AdminPanelPage({
   onMediaUpdated,
   onCardUpdated,
   onCatalogUpdated,
+  onAdminContactUpdated,
   onBackToStore,
 }: AdminPanelPageProps) {
   const [activeTab, setActiveTab] = useState<AdminTab>('stats');
@@ -206,6 +209,7 @@ export function AdminPanelPage({
   const [busyMediaId, setBusyMediaId] = useState('');
   const coverInputsRef = useRef<Record<string, HTMLInputElement | null>>({});
   const bannerInputsRef = useRef<Record<string, HTMLInputElement | null>>({});
+  const dashboardRequestRef = useRef(0);
 
   // Settings / Card form state
   const [cardNumber, setCardNumber] = useState(cardInfo.number || CARD_INFO.number);
@@ -222,6 +226,7 @@ export function AdminPanelPage({
   const [subscriptionChannelId, setSubscriptionChannelId] = useState('');
   const [subscriptionLink, setSubscriptionLink] = useState('');
   const [proofChannelId, setProofChannelId] = useState('');
+  const [adminContactLink, setAdminContactLink] = useState('');
 
   // Telegram broadcast / direct message state
   const [msgTarget, setMsgTarget] = useState<'admin' | 'broadcast' | 'custom'>('admin');
@@ -244,6 +249,7 @@ export function AdminPanelPage({
 
   const loadDashboard = useCallback(
     async (overrideKey?: string) => {
+      const requestId = ++dashboardRequestRef.current;
       setLoading(true);
       setUnauthorizedMsg('');
       try {
@@ -252,6 +258,7 @@ export function AdminPanelPage({
           headers: buildAuthHeaders(overrideKey),
         });
         const data = await res.json().catch(() => null);
+        if (requestId !== dashboardRequestRef.current) return;
         if (res.status === 401 || !res.ok || !data?.ok) {
           setDashboard(null);
           if (data?.code === 'auth_required') {
@@ -275,6 +282,7 @@ export function AdminPanelPage({
           setSubscriptionChannelId(data.storefrontSettings.subscriptionChannelId || '');
           setSubscriptionLink(data.storefrontSettings.subscriptionLink || '');
           setProofChannelId(data.storefrontSettings.proofChannelId || '');
+          setAdminContactLink(data.storefrontSettings.adminContactLink || '');
         }
         if (data.card) {
           onCardUpdated(data.card);
@@ -283,9 +291,11 @@ export function AdminPanelPage({
           setCardBank(data.card.bank);
         }
       } catch {
-        setUnauthorizedMsg('Server bilan bog‘lanib bo‘lmadi.');
+        if (requestId === dashboardRequestRef.current) {
+          setUnauthorizedMsg('Server bilan bog‘lanib bo‘lmadi.');
+        }
       } finally {
-        setLoading(false);
+        if (requestId === dashboardRequestRef.current) setLoading(false);
       }
     },
     [buildAuthHeaders, onCardUpdated]
@@ -511,6 +521,7 @@ export function AdminPanelPage({
           subscriptionChannelId,
           subscriptionLink,
           proofChannelId,
+          adminContactLink,
           initData,
           adminKey,
           adminToken,
@@ -522,7 +533,10 @@ export function AdminPanelPage({
         return;
       }
       setDashboard((current) => current ? { ...current, storefrontSettings: data.storefrontSettings } : current);
-      setBannerNotice({ type: 'ok', text: 'Obuna va isbot kanali sozlamalari saqlandi.' });
+      const savedAdminContact = data.storefrontSettings?.adminContactLink || '';
+      setAdminContactLink(savedAdminContact);
+      onAdminContactUpdated(savedAdminContact);
+      setBannerNotice({ type: 'ok', text: 'Do‘kon va admin kontakt sozlamalari saqlandi.' });
     } catch {
       setBannerNotice({ type: 'err', text: t.errNetwork });
     } finally {
@@ -892,7 +906,7 @@ export function AdminPanelPage({
                 </div>
 
                 {/* 4 iOS White KPI Cards */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3.5">
                   <div className="rounded-[20px] border border-black/[0.05] bg-white p-5 space-y-1 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                     <p className="text-xs font-medium text-[#8E8E93]">Jami buyurtmalar</p>
                     <p className="font-mono-num text-2xl font-bold text-[#1C1C1E]">
@@ -916,6 +930,10 @@ export function AdminPanelPage({
                     <p className="font-mono-num text-xl sm:text-2xl font-bold text-[#007AFF]">
                       {formatUzs(dashboard.stats.totalRevenueUzs, t.uzs)}
                     </p>
+                  </div>
+                  <div className="rounded-[20px] border border-black/[0.05] bg-white p-5 space-y-1 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                    <p className="text-xs font-medium text-[#8E8E93]">Telegram mijozlari</p>
+                    <p className="font-mono-num text-2xl font-bold text-[#1C1C1E]">{dashboard.stats.uniqueCustomers}</p>
                   </div>
                 </div>
 
@@ -1958,14 +1976,14 @@ export function AdminPanelPage({
 
                   <form onSubmit={handleKeySubmit} className="space-y-3 pt-3 border-t border-black/[0.06]">
                     <label htmlFor="settings-admin-key" className="block text-xs font-medium text-[#6C6C70]">
-                      ADMIN_PANEL_KEY yangilash
+                      ADMIN_PANEL_KEY bilan kirish
                     </label>
                     <input
                       id="settings-admin-key"
                       type="password"
                       value={keyInput}
                       onChange={(e) => setKeyInput(e.target.value)}
-                      placeholder="Netlify ADMIN_PANEL_KEY"
+                      placeholder="Vercel ADMIN_PANEL_KEY"
                       className="w-full min-h-[44px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 text-sm font-mono-num text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]"
                     />
                     <div className="flex flex-wrap items-center gap-2">
@@ -1973,7 +1991,7 @@ export function AdminPanelPage({
                         type="submit"
                         className="min-h-[42px] px-4 rounded-full bg-[#F2F2F7] hover:bg-[#E5E5EA] text-xs font-semibold text-[#1C1C1E] cursor-pointer"
                       >
-                        Kalitni qo‘llash
+                        Kalit bilan kirish
                       </button>
                       <button
                         type="button"
@@ -2008,12 +2026,16 @@ export function AdminPanelPage({
                       <label htmlFor="subscription-channel-link" className="block text-xs font-medium text-[#6C6C70] mb-1.5">Obuna havolasi (ixtiyoriy)</label>
                       <input id="subscription-channel-link" type="url" value={subscriptionLink} onChange={(event) => setSubscriptionLink(event.target.value)} placeholder="https://t.me/kanal_nomi" className="w-full min-h-[44px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 text-sm text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]" />
                     </div>
-                    <div className="md:col-span-2">
+                    <div>
                       <label htmlFor="proof-channel-id" className="block text-xs font-medium text-[#6C6C70] mb-1.5">Bajarilgan buyurtmalar uchun isbot kanali ID yoki @username</label>
-                      <input id="proof-channel-id" value={proofChannelId} onChange={(event) => setProofChannelId(event.target.value)} placeholder="@isbot_kanali, t.me/kanal yoki -1001234567890" className="w-full min-h-[44px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 font-mono-num text-sm text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]" />
+                      <input id="proof-channel-id" value={proofChannelId} onChange={(event) => setProofChannelId(event.target.value)} placeholder="@isbot_kanali yoki -1001234567890" className="w-full min-h-[44px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 font-mono-num text-sm text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]" />
+                    </div>
+                    <div>
+                      <label htmlFor="admin-contact-link" className="block text-xs font-medium text-[#6C6C70] mb-1.5">Mijozlar uchun admin Telegram kontakt</label>
+                      <input id="admin-contact-link" type="text" value={adminContactLink} onChange={(event) => setAdminContactLink(event.target.value)} placeholder="@admin yoki https://t.me/admin" className="w-full min-h-[44px] rounded-[14px] border border-black/[0.08] bg-[#F2F2F7] px-3.5 font-mono-num text-sm text-[#1C1C1E] focus:outline-none focus:bg-white focus:border-[#007AFF]" />
                     </div>
                   </div>
-                  <p className="text-xs text-[#6C6C70]">Obuna tekshiruvi uchun botni obuna kanaliga admin qiling. Isbot yuborish uchun botni isbot kanaliga admin qilib, xabar yuborish huquqini bering. Kanalda faqat buyurtma kodi va qisman yashirilgan ID ko‘rsatiladi.</p>
+                  <p className="text-xs text-[#6C6C70]">Obuna tekshiruvi uchun botni obuna kanaliga admin qiling. Isbot yuborish uchun botni isbot kanaliga admin qilib, xabar yuborish huquqini bering. Admin Telegram kontaktini kiritsangiz, do‘kon pastida mijozlarga “Adminga yozish” tugmasi ko‘rinadi.</p>
                   <button type="submit" disabled={savingShopSettings} className="min-h-[44px] px-5 rounded-full bg-[#007AFF] hover:bg-[#0066D6] disabled:opacity-50 text-white font-semibold text-sm inline-flex items-center gap-2 cursor-pointer">
                     {savingShopSettings && <Loader2 size={15} className="animate-spin" />}
                     <span>Kanal sozlamalarini saqlash</span>

@@ -16,6 +16,13 @@ test('rejects invalid SMM price inputs', () => {
   assert.equal(calculateSmmPrice(1_000.5, 1_000, 1_000), 0);
 });
 
+test('quotes customer-selected quantities for manually fulfilled SMM catalog items', () => {
+  const pack = resolveCatalogPack('smm-telegram', 'smm_tg_comments_1k');
+  assert.equal(pack.sora, null);
+  assert.equal(pack.amount, 1_000);
+  assert.equal(calculateSmmPrice(2_500, pack.amount, pack.priceUzs), 41_750);
+});
+
 test('uses the screenshot Telegram Stars and SMM price list', () => {
   assert.equal(resolveCatalogPack('tg-stars', 'tg_stars_50').priceUzs, 10_500);
   assert.equal(resolveCatalogPack('tg-stars', 'tg_stars_75').priceUzs, 15_750);

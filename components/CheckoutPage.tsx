@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Copy, ImagePlus, Loader2, RefreshCw, ShieldCheck, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { CARD_INFO } from '../data/catalog';
+import { TERMS_VERSION } from '../data/terms.js';
 import type { I18nDict } from '../data/i18n';
 import type { CardInfo, GameItem, GameRegion, Lang, OrderHistoryItem, PackItem } from '../types';
 import {
@@ -142,6 +143,7 @@ export function CheckoutPage({
           region,
           photo: receiptDataUrl,
           initData,
+          termsVersion: TERMS_VERSION,
         }),
       });
 

@@ -947,8 +947,6 @@ export default function App() {
               </div>
             </div>
 
-            <DeveloperSupport initData={initData} lang={lang} />
-
             {/* Home Catalog Sections — Side-by-side compact cards */}
             <div className="space-y-6">
               {homeSections.map((section) => (
@@ -1593,6 +1591,8 @@ export default function App() {
                 Foydalanish qoidalari
               </button>
             </div>
+
+            <DeveloperSupport initData={initData} lang={lang} />
           </div>
         )}
         {!isSubpage && (

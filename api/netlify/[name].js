@@ -5,7 +5,6 @@ import { handler as orderStatusHandler } from '../../order-status.js';
 import { handler as soraHandler } from '../../sora.js';
 import { handler as subscriptionHandler } from '../../subscription.js';
 import { handler as supportHandler } from '../../support.js';
-import { handler as termsHandler } from '../../terms.js';
 import { handler as telegramWebhookHandler } from '../../tg-webhook.js';
 import { handler as userCoinsHandler } from '../../user-coins.js';
 import { ensureTelegramWebhook } from '../../_lib.js';
@@ -18,7 +17,6 @@ const handlers = {
   sora: soraHandler,
   subscription: subscriptionHandler,
   support: supportHandler,
-  terms: termsHandler,
   'tg-webhook': telegramWebhookHandler,
   'user-coins': userCoinsHandler,
 };

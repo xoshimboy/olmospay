@@ -1,6 +1,5 @@
 import { calculatePackCoins, resolveCatalogPack } from './_catalog-map.js';
 import { calculateSmmPrice } from './smm-pricing.js';
-import { TERMS_VERSION } from './data/terms.js';
 import {
   checkRateLimit,
   checkTelegramChannelMembership,
@@ -8,7 +7,6 @@ import {
   escapeHtml,
   getPromoCode,
   getStorefrontSettings,
-  getTermsAcceptance,
   ensureTelegramWebhook,
   formatOrdLine,
   generateOrderRef,
@@ -58,26 +56,6 @@ export async function handler(event) {
     }
     tgUser = auth.user;
     sourceType = 'miniapp';
-  }
-
-  if (String(body.termsVersion || '') !== TERMS_VERSION) {
-    return jsonResponse(403, {
-      ok: false,
-      code: 'terms_required',
-      termsVersion: TERMS_VERSION,
-      error: 'Buyurtma berishdan oldin foydalanish qoidalarini qabul qiling.',
-    }, origin);
-  }
-  if (tgUser) {
-    const acceptance = await getTermsAcceptance(tgUser.id);
-    if (acceptance?.version !== TERMS_VERSION) {
-      return jsonResponse(403, {
-        ok: false,
-        code: 'terms_required',
-        termsVersion: TERMS_VERSION,
-        error: 'Foydalanish qoidalarini qayta qabul qiling.',
-      }, origin);
-    }
   }
 
   const storefrontSettings = await getStorefrontSettings();

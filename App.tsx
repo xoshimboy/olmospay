@@ -21,9 +21,7 @@ import { CheckoutPage } from './components/CheckoutPage';
 import { DeveloperSupport } from './components/DeveloperSupport';
 import { GameEmblem } from './components/GameEmblem';
 import { HistoryPage } from './components/HistoryPage';
-import { TermsDialog } from './components/TermsDialog';
 import { CARD_INFO, DEFAULT_GAMES } from './data/catalog';
-import { TERMS_VERSION } from './data/terms.js';
 import { I18N } from './data/i18n';
 import type {
   CardInfo,
@@ -138,13 +136,6 @@ function detectPanelRoute(): boolean {
   return cleanPath === '/panel' || window.location.hash === '#/panel';
 }
 
-interface TermsStatus {
-  ok: boolean;
-  version: string;
-  accepted: boolean;
-  acceptedAt: number | null;
-}
-
 function consumeAdminTokenFromUrl(): string {
   if (typeof window === 'undefined') return '';
   try {
@@ -225,10 +216,6 @@ export default function App() {
 
   const [tgUser, setTgUser] = useState<TgUser | null>(null);
   const [initData, setInitData] = useState<string>('');
-  const [sessionTermsAccepted, setSessionTermsAccepted] = useState(false);
-  const [showTerms, setShowTerms] = useState(false);
-  const [acceptingTerms, setAcceptingTerms] = useState(false);
-  const [termsError, setTermsError] = useState('');
   const [sessionHistory, setSessionHistory] = useState<OrderHistoryItem[]>(() => {
     try {
       const raw = window.localStorage.getItem(HISTORY_STORAGE_KEY);
@@ -242,21 +229,6 @@ export default function App() {
   const [walletCopied, setWalletCopied] = useState(false);
 
   const t = I18N[lang];
-  const { data: termsStatus, error: termsStatusError, mutate: mutateTermsStatus } = useSWR<TermsStatus>(
-    initData && !isPanelRoute ? `terms-status:${tgUser?.id || 'unknown'}:${TERMS_VERSION}` : null,
-    async () => {
-      const response = await fetch('/.netlify/functions/terms', {
-        headers: { 'X-Tg-Init-Data': initData },
-        cache: 'no-store',
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok || !data?.ok) throw new Error(data?.error || 'Qoidalar holatini olib bo‘lmadi.');
-      return data as TermsStatus;
-    },
-    { revalidateOnFocus: false, shouldRetryOnError: false }
-  );
-  const termsRequired = !isPanelRoute && !sessionTermsAccepted && !termsStatus?.accepted;
-
   const applyTheme = useCallback((nextTheme: ThemeMode) => {
     setThemeState(nextTheme);
     window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
@@ -276,30 +248,6 @@ export default function App() {
     window.localStorage.setItem(LANG_STORAGE_KEY, nextLang);
     document.documentElement.lang = nextLang;
   }, []);
-
-  async function acceptTerms() {
-    if (acceptingTerms) return;
-    setAcceptingTerms(true);
-    setTermsError('');
-    try {
-      if (initData) {
-        const response = await fetch('/.netlify/functions/terms', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ initData, version: TERMS_VERSION }),
-        });
-        const data = await response.json().catch(() => null);
-        if (!response.ok || !data?.ok) throw new Error(data?.error || 'Rozilikni saqlab bo‘lmadi.');
-        await mutateTermsStatus(data as TermsStatus, { revalidate: false });
-      }
-      setSessionTermsAccepted(true);
-      setShowTerms(false);
-    } catch (error) {
-      setTermsError(error instanceof Error ? error.message : 'Rozilikni saqlab bo‘lmadi.');
-    } finally {
-      setAcceptingTerms(false);
-    }
-  }
 
   useEffect(() => {
     const { user, initData: rawInit } = initTelegramApp();
@@ -714,7 +662,6 @@ export default function App() {
         body: JSON.stringify({
           action: 'validate-promo',
           promoCode: promoInput.trim(),
-          termsVersion: TERMS_VERSION,
           gameId: selectedGame.id,
           packId: selectedPack.id,
           ...(selectedGame.category === 'smm' ? { quantity: selectedOrderPack.amount } : {}),
@@ -1580,16 +1527,6 @@ export default function App() {
                 <h2 className="font-display text-base font-bold text-[var(--ink)]">{t.profileSupport}</h2>
                 <p className="text-sm text-[var(--ink-muted)]">{t.supportDesc}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setTermsError('');
-                  setShowTerms(true);
-                }}
-                className="min-h-11 shrink-0 rounded-full border border-[var(--line)] px-4 text-sm font-semibold text-[var(--ink)] hover:bg-[var(--surface-muted)]"
-              >
-                Foydalanish qoidalari
-              </button>
             </div>
 
             <DeveloperSupport initData={initData} lang={lang} />
@@ -1615,15 +1552,6 @@ export default function App() {
 
       {/* Bottom Tab Navigation */}
       {!isSubpage && <BottomNav activePage={activePage} t={t} onNavigate={navPage} />}
-
-      <TermsDialog
-        open={showTerms || termsRequired}
-        required={termsRequired}
-        accepting={acceptingTerms}
-        error={termsError || termsStatusError?.message || ''}
-        onAccept={() => void acceptTerms()}
-        onClose={() => setShowTerms(false)}
-      />
 
       {subscriptionPrompt && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm" role="presentation">

@@ -1409,12 +1409,7 @@ export async function ensureTelegramWebhook() {
     return { ok: true, cached: true };
   }
 
-  const host =
-    process.env.OLMOSPAY_APP_URL ||
-    process.env.VERCEL_PROJECT_PRODUCTION_URL ||
-    process.env.APP_URL ||
-    process.env.URL ||
-    'https://olmospay.vercel.app';
+  const host = process.env.OLMOSPAY_APP_URL || 'https://olmospay.vercel.app';
   let baseUrl;
   try {
     const parsed = new URL(host.startsWith('http') ? host : `https://${host}`);

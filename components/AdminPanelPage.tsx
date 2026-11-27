@@ -1472,15 +1472,34 @@ export function AdminPanelPage({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setCoverScope('packs')}
+                      onClick={() => {
+                        setCoverScope('packs');
+                        setSelectedCoverGameId('all');
+                      }}
                       className={`min-h-[38px] px-4 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-all ${
-                        coverScope === 'packs'
+                        coverScope === 'packs' && selectedCoverGameId !== 'tg-gifts'
                           ? 'bg-white text-[#007AFF] shadow-xs'
                           : 'text-[#6C6C70] hover:text-[#1C1C1E]'
                       }`}
                     >
                       <Layers size={14} />
-                      <span>UC, Olmos va paketlar</span>
+                      <span>Barcha paket rasmlari</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCoverScope('packs');
+                        setSelectedCoverGameId('tg-gifts');
+                      }}
+                      aria-pressed={coverScope === 'packs' && selectedCoverGameId === 'tg-gifts'}
+                      className={`min-h-[38px] px-4 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-all ${
+                        coverScope === 'packs' && selectedCoverGameId === 'tg-gifts'
+                          ? 'bg-white text-[#007AFF] shadow-xs'
+                          : 'text-[#6C6C70] hover:text-[#1C1C1E]'
+                      }`}
+                    >
+                      <Gift size={14} />
+                      <span>Sovg‘a rasmlari ({games.find((game) => game.id === 'tg-gifts')?.packs.length || 0})</span>
                     </button>
                   </div>
                 </div>

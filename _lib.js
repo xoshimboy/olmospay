@@ -1038,7 +1038,7 @@ export async function getAllServiceMedia() {
 
 export async function saveServiceMedia(gameId, dataUrl) {
   const cleanId = String(gameId || '').trim();
-  if (!/^(?:[a-z0-9-]{2,32}|pack:[a-z0-9_-]{2,48})$/.test(cleanId)) {
+  if (!/^(?:[a-z0-9-]{2,32}|pack:[a-z0-9_-]{2,48}|reward:[a-z0-9-]{2,48})$/.test(cleanId)) {
     throw new Error('invalid_game_id');
   }
   const database = getDatabase();
@@ -1060,7 +1060,7 @@ export async function saveServiceMedia(gameId, dataUrl) {
 
 export async function deleteServiceMedia(gameId) {
   const cleanId = String(gameId || '').trim();
-  if (!/^(?:[a-z0-9-]{2,32}|pack:[a-z0-9_-]{2,48})$/.test(cleanId)) {
+  if (!/^(?:[a-z0-9-]{2,32}|pack:[a-z0-9_-]{2,48}|reward:[a-z0-9-]{2,48})$/.test(cleanId)) {
     throw new Error('invalid_game_id');
   }
   const database = getDatabase();
@@ -1130,6 +1130,7 @@ export async function saveCardSettings({ number, holder, bank }) {
 
 const DEFAULT_STOREFRONT_SETTINGS = {
   priceOverrides: {},
+  disabledPackIds: [],
   mandatorySubscription: false,
   subscriptionChannelId: '',
   subscriptionLink: '',
@@ -1151,6 +1152,12 @@ function cleanPriceOverrides(input) {
     if (Object.keys(packs).length) clean[game.id] = packs;
   }
   return clean;
+}
+
+function cleanDisabledPackIds(input) {
+  if (!Array.isArray(input)) return [];
+  const validIds = new Set(CATALOG.flatMap((game) => game.packs.map((pack) => `${game.id}:${pack.id}`)));
+  return [...new Set(input.filter((id) => typeof id === 'string' && validIds.has(id)))];
 }
 
 function cleanTelegramChannelId(value) {
@@ -1220,6 +1227,7 @@ export async function getStorefrontSettings() {
     ...DEFAULT_STOREFRONT_SETTINGS,
     ...(stored && typeof stored === 'object' ? stored : {}),
     priceOverrides: cleanPriceOverrides(stored?.priceOverrides),
+    disabledPackIds: cleanDisabledPackIds(stored?.disabledPackIds),
   };
 }
 
@@ -1227,6 +1235,7 @@ export async function saveStorefrontSettings(input = {}) {
   const current = await getStorefrontSettings();
   const next = {
     priceOverrides: input.priceOverrides === undefined ? current.priceOverrides : cleanPriceOverrides(input.priceOverrides),
+    disabledPackIds: input.disabledPackIds === undefined ? current.disabledPackIds : cleanDisabledPackIds(input.disabledPackIds),
     mandatorySubscription: input.mandatorySubscription === undefined
       ? current.mandatorySubscription
       : input.mandatorySubscription === true,

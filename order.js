@@ -87,9 +87,9 @@ export async function handler(event) {
   // 3. Server-side authoritative catalog & price validation (never trust client price)
   const gameId = String(body.gameId || body.game || '').trim();
   const packId = String(body.packId || body.item || '').trim();
-  const pack = resolveCatalogPack(gameId, packId, storefrontSettings.priceOverrides);
+  const pack = resolveCatalogPack(gameId, packId, storefrontSettings.priceOverrides, storefrontSettings.disabledPackIds);
   if (!pack) {
-    return jsonResponse(400, { ok: false, error: 'Tanlangan o‘yin yoki paket topilmadi' }, origin);
+    return jsonResponse(400, { ok: false, code: 'product_unavailable', error: 'Bu paket hozircha vaqtincha mavjud emas.' }, origin);
   }
 
   const isCustomSmm = pack.category === 'smm';

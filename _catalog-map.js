@@ -781,11 +781,11 @@ export function calculatePackCoins({ amount = 0, unit = '', category = 'games', 
   return Math.max(1, Math.round(price / 2200));
 }
 
-export function resolveCatalogPack(gameId, packId, priceOverrides = {}) {
+export function resolveCatalogPack(gameId, packId, priceOverrides = {}, disabledPackIds = []) {
   const game = CATALOG.find((g) => g.id === gameId);
   if (!game) return null;
   const pack = game.packs.find((p) => p.id === packId);
-  if (!pack) return null;
+  if (!pack || disabledPackIds.includes(`${game.id}:${pack.id}`)) return null;
   const override = Number(priceOverrides?.[game.id]?.[pack.id]);
   const priceUzs = Number.isSafeInteger(override) && override > 0
     ? override
@@ -823,7 +823,7 @@ export function resolveCatalogPack(gameId, packId, priceOverrides = {}) {
   };
 }
 
-export function getPublicCatalog(priceOverrides = {}) {
+export function getPublicCatalog(priceOverrides = {}, disabledPackIds = [], includeDisabled = false) {
   return CATALOG.map((game) => ({
     id: game.id,
     name: game.name,
@@ -837,8 +837,8 @@ export function getPublicCatalog(priceOverrides = {}) {
     serverLabel: game.serverLabel || null,
     serverPlaceholder: game.serverPlaceholder || null,
     soraService: game.soraService,
-    packs: game.packs.map((p) => {
-      const override = Number(priceOverrides?.[game.id]?.[p.id]);
+      packs: game.packs.filter((pack) => includeDisabled || !disabledPackIds.includes(`${game.id}:${pack.id}`)).map((p) => {
+        const override = Number(priceOverrides?.[game.id]?.[p.id]);
       const priceUzs = Number.isSafeInteger(override) && override > 0 ? override : p.priceUzs;
       return {
       id: p.id,

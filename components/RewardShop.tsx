@@ -15,6 +15,7 @@ interface RewardShopProps {
   lang: Lang;
   initData: string;
   balance: number;
+  customMedia: Record<string, string>;
   onSuccess: (result: RedemptionResult) => void;
 }
 
@@ -140,7 +141,7 @@ const iconByReward = {
   'pubg-120-uc': Gamepad2,
 };
 
-export function RewardShop({ lang, initData, balance, onSuccess }: RewardShopProps) {
+export function RewardShop({ lang, initData, balance, customMedia, onSuccess }: RewardShopProps) {
   const strings = copy[lang];
   const [selected, setSelected] = useState<Reward | null>(null);
   const [target, setTarget] = useState('');
@@ -246,8 +247,12 @@ export function RewardShop({ lang, initData, balance, onSuccess }: RewardShopPro
                 className="flex min-h-[172px] flex-col justify-between rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 transition-colors hover:border-amber-500/35"
               >
                 <div className="flex items-start gap-3">
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-700 dark:text-[#E5B94C]">
-                    <Icon size={20} aria-hidden="true" />
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-amber-500/10 text-amber-700 dark:text-[#E5B94C]">
+                    {reward.id === 'telegram-gift' && customMedia['reward:telegram-gift'] ? (
+                      <img src={customMedia['reward:telegram-gift']} alt="Telegram sovg‘asi" className="h-full w-full object-cover" />
+                    ) : (
+                      <Icon size={20} aria-hidden="true" />
+                    )}
                   </span>
                   <div className="min-w-0">
                     <h3 className="font-display text-sm font-bold text-[var(--ink)]">{title}</h3>

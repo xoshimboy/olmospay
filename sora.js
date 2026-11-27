@@ -25,7 +25,7 @@ export async function handler(event) {
       },
       body: JSON.stringify({
         ok: true,
-        games: getPublicCatalog(settings.priceOverrides),
+        games: getPublicCatalog(settings.priceOverrides, settings.disabledPackIds),
         adminContactLink: settings.adminContactLink || '',
       }),
     };

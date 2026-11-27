@@ -10,6 +10,7 @@ import {
   CreditCard,
   Download,
   ExternalLink,
+  Gift,
   ImageIcon,
   ImagePlus,
   Images,
@@ -35,7 +36,7 @@ import type { CardInfo, GameItem, Lang, OrderStatus, ThemeMode } from '../types'
 import { compressBannerImage, compressCoverImage, formatOrderDate, formatUzs } from '../utils/format';
 import { GameEmblem } from './GameEmblem';
 
-type AdminTab = 'stats' | 'orders' | 'prices' | 'promos' | 'covers' | 'banners' | 'message' | 'settings';
+type AdminTab = 'stats' | 'orders' | 'prices' | 'promos' | 'rewards' | 'covers' | 'banners' | 'message' | 'settings';
 type CoverScope = 'services' | 'packs';
 
 interface AdminOrderRecord {
@@ -75,6 +76,7 @@ interface AdminPromoCode {
 
 interface StorefrontSettings {
   priceOverrides: Record<string, Record<string, number>>;
+  disabledPackIds: string[];
   mandatorySubscription: boolean;
   subscriptionChannelId: string;
   subscriptionLink: string;
@@ -112,6 +114,7 @@ interface AdminDashboardData {
   storefrontSettings: StorefrontSettings;
   promoCodes: AdminPromoCode[];
   games: GameItem[];
+  adminGames?: GameItem[];
   sora: {
     ok: boolean;
     balance: number | null;
@@ -219,6 +222,7 @@ export function AdminPanelPage({
   const [savingPrices, setSavingPrices] = useState(false);
   const [savingShopSettings, setSavingShopSettings] = useState(false);
   const [priceDraft, setPriceDraft] = useState<Record<string, Record<string, string>>>({});
+  const [disabledPackIds, setDisabledPackIds] = useState<string[]>([]);
   const [promoCodeInput, setPromoCodeInput] = useState('');
   const [promoMaxUses, setPromoMaxUses] = useState('100');
   const [busyPromoCode, setBusyPromoCode] = useState('');
@@ -270,14 +274,16 @@ export function AdminPanelPage({
           }
           return;
         }
-        setDashboard(data);
-        if (Array.isArray(data.games)) {
-          setPriceDraft(Object.fromEntries(data.games.map((game: GameItem) => [
+        const adminGames = Array.isArray(data.adminGames) ? data.adminGames : data.games;
+        setDashboard({ ...data, games: adminGames });
+        if (Array.isArray(adminGames)) {
+          setPriceDraft(Object.fromEntries(adminGames.map((game: GameItem) => [
             game.id,
             Object.fromEntries(game.packs.map((pack) => [pack.id, String(pack.priceUzs)])),
           ])));
         }
         if (data.storefrontSettings) {
+          setDisabledPackIds(Array.isArray(data.storefrontSettings.disabledPackIds) ? data.storefrontSettings.disabledPackIds : []);
           setMandatorySubscription(Boolean(data.storefrontSettings.mandatorySubscription));
           setSubscriptionChannelId(data.storefrontSettings.subscriptionChannelId || '');
           setSubscriptionLink(data.storefrontSettings.subscriptionLink || '');
@@ -490,16 +496,17 @@ export function AdminPanelPage({
       const res = await fetch('/.netlify/functions/admin-panel', {
         method: 'POST',
         headers: buildAuthHeaders(),
-        body: JSON.stringify({ action: 'save-storefront-settings', priceOverrides, initData, adminKey, adminToken }),
+        body: JSON.stringify({ action: 'save-storefront-settings', priceOverrides, disabledPackIds, initData, adminKey, adminToken }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) {
         setBannerNotice({ type: 'err', text: data?.error || 'Narxlarni saqlab bo‘lmadi.' });
         return;
       }
-      setDashboard((current) => current ? { ...current, storefrontSettings: data.storefrontSettings, games: data.games } : current);
+      setDashboard((current) => current ? { ...current, storefrontSettings: data.storefrontSettings, games: data.adminGames || data.games } : current);
+      setDisabledPackIds(data.storefrontSettings?.disabledPackIds || []);
       if (Array.isArray(data.games)) onCatalogUpdated(data.games);
-      setBannerNotice({ type: 'ok', text: 'Barcha paket narxlari saqlandi.' });
+      setBannerNotice({ type: 'ok', text: 'Narx va paket mavjudligi sozlamalari saqlandi.' });
     } catch {
       setBannerNotice({ type: 'err', text: t.errNetwork });
     } finally {
@@ -693,6 +700,7 @@ export function AdminPanelPage({
     { id: 'orders', label: 'Buyurtmalar', icon: ShoppingBag },
     { id: 'prices', label: 'Narxlar', icon: CreditCard },
     { id: 'promos', label: 'Promokod', icon: Tag },
+    { id: 'rewards', label: 'Mukofotlar', icon: Gift },
     { id: 'covers', label: 'Oblojkalar', icon: Images },
     { id: 'banners', label: 'Bannerlar', icon: ImageIcon },
     { id: 'message', label: 'Xabar', icon: Send },
@@ -1271,7 +1279,7 @@ export function AdminPanelPage({
               <section className="admin-enter space-y-4">
                 <div>
                   <h2 className="font-display text-2xl font-bold text-[#1C1C1E]">Paket narxlari</h2>
-                  <p className="mt-1 text-sm text-[#6C6C70]">Do‘kondagi narxlarni shu yerdan o‘zgartiring. Saqlashdan keyin buyurtma summasi serverda ham qayta tekshiriladi.</p>
+                  <p className="mt-1 text-sm text-[#6C6C70]">Narxni o‘zgartiring yoki paketni vaqtincha o‘chirib qo‘ying. O‘chirilgan paket mijozlarga ko‘rinmaydi va buyurtma qilib bo‘lmaydi.</p>
                 </div>
                 {(dashboard.games || games).map((game) => (
                   <details key={game.id} open={game.id === 'pubg'} className="rounded-[20px] border border-black/[0.05] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
@@ -1283,9 +1291,9 @@ export function AdminPanelPage({
                       {game.packs.map((pack) => {
                         const inputId = `price-${game.id}-${pack.id}`;
                         return (
-                          <div key={pack.id} className="flex items-center justify-between gap-3 rounded-2xl bg-[#F2F2F7] px-3.5 py-3">
+                          <div key={pack.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#F2F2F7] px-3.5 py-3">
                             <label htmlFor={inputId} className="min-w-0 text-sm font-medium text-[#1C1C1E]">{pack.label}</label>
-                            <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
                               <input
                                 id={inputId}
                                 type="number"
@@ -1301,6 +1309,19 @@ export function AdminPanelPage({
                                 className="w-32 min-h-[42px] rounded-xl border border-black/[0.08] bg-white px-3 text-right font-mono-num text-sm font-semibold text-[#1C1C1E] focus:outline-none focus:border-[#007AFF]"
                               />
                               <span className="text-xs text-[#6C6C70]">so‘m</span>
+                              <label className="ml-2 inline-flex min-h-10 items-center gap-2 rounded-xl bg-white px-2.5 text-xs font-semibold text-[#1C1C1E]">
+                                <input
+                                  type="checkbox"
+                                  checked={!disabledPackIds.includes(`${game.id}:${pack.id}`)}
+                                  onChange={() => setDisabledPackIds((current) => {
+                                    const packKey = `${game.id}:${pack.id}`;
+                                    return current.includes(packKey) ? current.filter((id) => id !== packKey) : [...current, packKey];
+                                  })}
+                                  aria-label={`${pack.label} do‘konda mavjud bo‘lsin`}
+                                  className="h-4 w-4 accent-[#007AFF]"
+                                />
+                                Sotuvda
+                              </label>
                             </div>
                           </div>
                         );
@@ -1392,6 +1413,36 @@ export function AdminPanelPage({
                     </div>
                   )}
                 </div>
+              </section>
+            )}
+
+            {activeTab === 'rewards' && (
+              <section className="admin-enter max-w-2xl rounded-[22px] border border-black/[0.05] bg-white p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600"><Gift size={20} /></div>
+                  <div>
+                    <h2 className="font-display text-lg font-bold text-[#1C1C1E]">Telegram Gift rasmi</h2>
+                    <p className="text-sm text-[#6C6C70]">Yuklangan rasm profil mukofotlaridagi sovg‘a kartasida ko‘rinadi.</p>
+                  </div>
+                </div>
+                <div className="mt-5 flex flex-wrap items-center gap-4">
+                  {customMedia['reward:telegram-gift'] ? (
+                    <img src={customMedia['reward:telegram-gift']} alt="Telegram Gift mukofoti rasmi" className="h-24 w-24 rounded-2xl border border-black/10 object-cover" />
+                  ) : (
+                    <div className="flex h-24 w-24 items-center justify-center rounded-2xl border border-dashed border-black/15 bg-[#F8F9FC] text-[#8E8E93]"><ImagePlus size={26} /></div>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full bg-[#007AFF] px-4 text-sm font-semibold text-white hover:bg-[#0066D6]">
+                      {busyMediaId === 'reward:telegram-gift' ? <Loader2 size={15} className="animate-spin" /> : <ImagePlus size={16} />}
+                      {customMedia['reward:telegram-gift'] ? 'Rasmni almashtirish' : 'Rasm yuklash'}
+                      <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={busyMediaId === 'reward:telegram-gift'} onChange={(event) => { void handleMediaUpload('reward:telegram-gift', event.target.files?.[0]); event.currentTarget.value = ''; }} />
+                    </label>
+                    {customMedia['reward:telegram-gift'] && (
+                      <button type="button" disabled={busyMediaId === 'reward:telegram-gift'} onClick={() => void handleMediaDelete('reward:telegram-gift')} className="min-h-11 rounded-full border border-black/10 px-4 text-sm font-semibold text-[#D70015] disabled:opacity-50">Rasmni olib tashlash</button>
+                    )}
+                  </div>
+                </div>
+                <p className="mt-4 text-xs text-[#8E8E93]">JPEG, PNG yoki WebP, 4 MB gacha.</p>
               </section>
             )}
 

@@ -121,7 +121,8 @@ export async function handler(event) {
         card,
         storefrontSettings,
         promoCodes,
-        games: getPublicCatalog(storefrontSettings.priceOverrides),
+        games: getPublicCatalog(storefrontSettings.priceOverrides, storefrontSettings.disabledPackIds),
+        adminGames: getPublicCatalog(storefrontSettings.priceOverrides, storefrontSettings.disabledPackIds, true),
         sora: {
           ok: soraMe.ok,
           balance: soraMe.ok ? soraMe.data?.balance : null,
@@ -157,12 +158,18 @@ export async function handler(event) {
       try {
         const storefrontSettings = await saveStorefrontSettings({
           priceOverrides: body.priceOverrides,
+          disabledPackIds: body.disabledPackIds,
           mandatorySubscription: body.mandatorySubscription,
           subscriptionChannelId: body.subscriptionChannelId,
           subscriptionLink: body.subscriptionLink,
           proofChannelId: body.proofChannelId,
         });
-        return jsonResponse(200, { ok: true, storefrontSettings, games: getPublicCatalog(storefrontSettings.priceOverrides) }, origin);
+        return jsonResponse(200, {
+          ok: true,
+          storefrontSettings,
+          games: getPublicCatalog(storefrontSettings.priceOverrides, storefrontSettings.disabledPackIds),
+          adminGames: getPublicCatalog(storefrontSettings.priceOverrides, storefrontSettings.disabledPackIds, true),
+        }, origin);
       } catch (error) {
         const reason = error instanceof Error ? error.message : '';
         const message = reason === 'subscription_channel_required'

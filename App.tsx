@@ -1475,6 +1475,7 @@ export default function App() {
               lang={lang}
               initData={initData}
               balance={coinsState.balance}
+              customMedia={customMedia}
               onSuccess={(result) => {
                 setCoinsState((current) => ({ ...current, balance: result.balance }));
                 writeCacheJson(COINS_CACHE_KEY, { ...coinsState, balance: result.balance });

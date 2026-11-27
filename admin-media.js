@@ -67,9 +67,10 @@ export async function handler(event) {
   const targetId = String(body.gameId || '').trim();
   const isBanner = BANNER_IDS.has(targetId);
   const isPack = VALID_PACK_KEYS.has(targetId) || /^pack:[a-z0-9_-]{2,48}$/.test(targetId);
+  const isReward = /^reward:[a-z0-9-]{2,48}$/.test(targetId);
   const isService = Boolean(resolveCatalogPack(targetId, '') || /^[a-z0-9-]{2,32}$/.test(targetId));
 
-  if (!isBanner && !isPack && !isService) {
+  if (!isBanner && !isPack && !isReward && !isService) {
     return jsonResponse(400, { ok: false, error: 'Xizmat, paket yoki banner ID si noto‘g‘ri' }, origin);
   }
 

@@ -1,5 +1,6 @@
 import { CATALOG, getPublicCatalog } from './_catalog-map.js';
 import {
+  cancelCoinRewardOrder,
   creditOrderCoins,
   deleteOrder,
   ensureTelegramWebhook,
@@ -335,16 +336,23 @@ export async function handler(event) {
           error: 'Bu buyurtma allaqachon ko‘rib chiqilgan yoki bajarilmoqda.',
         }, origin);
       }
-      const updated = await updateOrder(ref, {
-        status: 'canceled',
-        customerNotifiedAt: order.customerNotifiedAt || Date.now(),
-      });
+      const cancellation = order.sourceType === 'coin_reward'
+        ? await cancelCoinRewardOrder(ref)
+        : {
+            order: await updateOrder(ref, {
+              status: 'canceled',
+              customerNotifiedAt: order.customerNotifiedAt || Date.now(),
+            }),
+            refundedCoins: 0,
+          };
+      const updated = cancellation.order;
       if (order.adminChatId && order.adminMessageId) {
-        await telegramApi('editMessageCaption', {
+        const caption = `RAD ETILDI · ${escapeHtml(ref)}\nAdmin panel orqali bekor qilindi.${cancellation.refundedCoins ? ` ${cancellation.refundedCoins} tanga qaytarildi.` : ''}`;
+        await telegramApi(order.sourceType === 'coin_reward' ? 'editMessageText' : 'editMessageCaption', {
           chat_id: order.adminChatId,
           message_id: order.adminMessageId,
           parse_mode: 'HTML',
-          caption: `❌ <b>RAD ETILDI · ${escapeHtml(ref)}</b>\nAdmin panel orqali bekor qilindi.`,
+          ...(order.sourceType === 'coin_reward' ? { text: caption } : { caption }),
           reply_markup: { inline_keyboard: [] },
         });
       }
@@ -352,10 +360,12 @@ export async function handler(event) {
         await telegramApi('sendMessage', {
           chat_id: order.tgUserId,
           parse_mode: 'HTML',
-          text: `❌ <b>Buyurtmangiz rad etildi</b>\nRaqam: <code>${escapeHtml(ref)}</code>\nSabab: to‘lov tasdiqlanmadi.`,
+          text: order.sourceType === 'coin_reward'
+            ? `Mukofot so‘rovingiz bekor qilindi. Buyurtma: <code>${escapeHtml(ref)}</code>${cancellation.refundedCoins ? `\n${cancellation.refundedCoins} tanga balansingizga qaytarildi.` : ''}`
+            : `Buyurtmangiz rad etildi. Raqam: <code>${escapeHtml(ref)}</code>\nSabab: to‘lov tasdiqlanmadi.`,
         });
       }
-      return jsonResponse(200, { ok: true, order: updated }, origin);
+      return jsonResponse(200, { ok: true, order: updated, refundedCoins: cancellation.refundedCoins }, origin);
     }
 
     if (action === 'manual-done') {
@@ -375,15 +385,16 @@ export async function handler(event) {
       });
       const completedOrder = updated || { ...order, status: 'completed' };
       const coinRes = await creditOrderCoins(completedOrder);
-      await publishOrderProof(completedOrder);
+      if (order.sourceType !== 'coin_reward') await publishOrderProof(completedOrder);
       if (order.adminChatId && order.adminMessageId) {
-        await telegramApi('editMessageCaption', {
+        const completionText = `QO‘LDA BAJARILDI · ${escapeHtml(ref)}\nAdmin panel orqali tasdiqlandi.${
+          coinRes.coins > 0 ? `\n+${coinRes.coins} tanga` : ''
+        }`;
+        await telegramApi(order.sourceType === 'coin_reward' ? 'editMessageText' : 'editMessageCaption', {
           chat_id: order.adminChatId,
           message_id: order.adminMessageId,
           parse_mode: 'HTML',
-          caption: `✅ <b>QO‘LDA BAJARILDI · ${escapeHtml(ref)}</b>\nAdmin panel orqali tasdiqlandi.${
-            coinRes.coins > 0 ? `\n🪙 +${coinRes.coins} tanga` : ''
-          }`,
+          ...(order.sourceType === 'coin_reward' ? { text: completionText } : { caption: completionText }),
           reply_markup: { inline_keyboard: [] },
         });
       }
@@ -391,8 +402,8 @@ export async function handler(event) {
         await telegramApi('sendMessage', {
           chat_id: order.tgUserId,
           parse_mode: 'HTML',
-          text: `✅ <b>Buyurtmangiz bajarildi!</b>\nRaqam: <code>${escapeHtml(ref)}</code>\nPaket: ${escapeHtml(order.packLabel)}${
-            coinRes.coins > 0 ? `\n\n🪙 <b>+${coinRes.coins} tanga</b> hisobingizga qo‘shildi!` : ''
+          text: `Buyurtmangiz bajarildi!\nRaqam: <code>${escapeHtml(ref)}</code>\nPaket: ${escapeHtml(order.packLabel)}${
+            coinRes.coins > 0 ? `\n\n+${coinRes.coins} tanga hisobingizga qo‘shildi!` : ''
           }`,
         });
       }

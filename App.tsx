@@ -21,6 +21,7 @@ import { CheckoutPage } from './components/CheckoutPage';
 import { DeveloperSupport } from './components/DeveloperSupport';
 import { GameEmblem } from './components/GameEmblem';
 import { HistoryPage } from './components/HistoryPage';
+import { RewardShop } from './components/RewardShop';
 import { CARD_INFO, DEFAULT_GAMES } from './data/catalog';
 import { I18N } from './data/i18n';
 import type {
@@ -1469,6 +1470,19 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            <RewardShop
+              lang={lang}
+              initData={initData}
+              balance={coinsState.balance}
+              onSuccess={(result) => {
+                setCoinsState((current) => ({ ...current, balance: result.balance }));
+                writeCacheJson(COINS_CACHE_KEY, { ...coinsState, balance: result.balance });
+                if (result.order) {
+                  saveHistory([result.order, ...sessionHistory.filter((item) => item.ref !== result.order?.ref)]);
+                }
+              }}
+            />
 
             {/* Language Selector */}
             <div className="ios-glass-card rounded-[22px] p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">

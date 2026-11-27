@@ -10,6 +10,7 @@ import { handler as tgWebhookHandler } from './tg-webhook.js';
 import { handler as adminMediaHandler } from './admin-media.js';
 import { handler as adminPanelHandler } from './admin-panel.js';
 import { handler as userCoinsHandler } from './user-coins.js';
+import { handler as redeemRewardHandler } from './redeem-reward.js';
 import { handler as subscriptionHandler } from './subscription.js';
 import { handler as supportHandler } from './support.js';
 import { soraRequest, telegramApi, verifyAdminAccess } from './_lib.js';
@@ -208,6 +209,7 @@ async function startServer() {
   app.all('/.netlify/functions/admin-media', adaptNetlify(adminMediaHandler));
   app.all('/.netlify/functions/admin-panel', adaptNetlify(adminPanelHandler));
   app.all('/.netlify/functions/user-coins', adaptNetlify(userCoinsHandler));
+  app.all('/.netlify/functions/redeem-reward', adaptNetlify(redeemRewardHandler));
   app.all('/.netlify/functions/subscription', adaptNetlify(subscriptionHandler));
   app.all('/.netlify/functions/support', adaptNetlify(supportHandler));
 

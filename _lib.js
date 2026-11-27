@@ -19,7 +19,6 @@ const memoryTelegramCustomers = new Map();
 const memoryRateLimits = new Map();
 const memoryServiceMedia = new Map();
 const memoryAdminMessageLogs = [];
-const memoryTermsAcceptances = new Map();
 let memoryCardSettings = null;
 let memoryShopSettings = null;
 const memoryPromoCodes = new Map();
@@ -48,28 +47,6 @@ async function setAppStateValue(key, value) {
       set: { value, updatedAt: new Date() },
     });
   return value;
-}
-
-export async function getTermsAcceptance(tgUserId) {
-  const id = String(tgUserId || '').trim();
-  if (!/^\d{1,20}$/.test(id)) return null;
-  const key = `terms-acceptance:${id}`;
-  const database = getDatabase();
-  return database ? getAppStateValue(key) : memoryTermsAcceptances.get(key) || null;
-}
-
-export async function saveTermsAcceptance(tgUserId, version) {
-  const id = String(tgUserId || '').trim();
-  const cleanVersion = String(version || '').trim();
-  if (!/^\d{1,20}$/.test(id) || !/^\d{4}-\d{2}-\d{2}$/.test(cleanVersion)) {
-    throw new Error('invalid_terms_acceptance');
-  }
-  const record = { version: cleanVersion, acceptedAt: Date.now() };
-  const key = `terms-acceptance:${id}`;
-  const database = getDatabase();
-  if (database) await setAppStateValue(key, record);
-  else memoryTermsAcceptances.set(key, record);
-  return record;
 }
 
 export function getTelegramWebhookSecret() {

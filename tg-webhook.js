@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import {
+  cancelCoinRewardOrder,
   creditOrderCoins,
   escapeHtml,
   getOrder,
@@ -705,17 +706,22 @@ export async function processTelegramUpdate(update) {
 
   if (action === 'no') {
     await telegramApi('answerCallbackQuery', { callback_query_id: cq.id, text: 'Buyurtma rad etildi' });
-    await updateOrder(ref, { status: 'canceled' });
+    const isCoinReward = stored?.sourceType === 'coin_reward';
+    const cancellation = isCoinReward
+      ? await cancelCoinRewardOrder(ref)
+      : { order: await updateOrder(ref, { status: 'canceled' }), refundedCoins: 0 };
     await editAdminMessage(
       chatId,
       messageId,
       isCaption,
-      `❌ <b>RAD ETILDI · ${escapeHtml(ref)}</b>\nAdmin tomonidan bekor qilindi.`,
+      `RAD ETILDI · ${escapeHtml(ref)}\nAdmin tomonidan bekor qilindi.${cancellation.refundedCoins ? ` ${cancellation.refundedCoins} tanga qaytarildi.` : ''}`,
       { inline_keyboard: [] }
     );
     await notifyCustomer(
       ord?.tgUserId || stored?.tgUserId,
-      `❌ <b>Buyurtmangiz rad etildi</b>\nRaqam: <code>${escapeHtml(ref)}</code>\nSabab: to‘lov tasdiqlanmadi. Savol bo‘lsa adminga murojaat qiling.`
+      isCoinReward
+        ? `Mukofot so‘rovingiz bekor qilindi. Buyurtma: <code>${escapeHtml(ref)}</code>${cancellation.refundedCoins ? `\n${cancellation.refundedCoins} tanga balansingizga qaytarildi.` : ''}`
+        : `Buyurtmangiz rad etildi. Raqam: <code>${escapeHtml(ref)}</code>\nSabab: to‘lov tasdiqlanmadi.`
     );
     return;
   }

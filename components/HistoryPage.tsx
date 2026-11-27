@@ -39,7 +39,7 @@ function StatusLabel({ status, label }: { status: OrderStatus; label: string }) 
 }
 
 export function HistoryPage({ t, lang, orders, refreshing, onRefresh, onBrowseGames }: HistoryPageProps) {
-  const hasActiveOrder = orders.some((o) => o.status === 'pending' || o.status === 'processing');
+  const hasActiveOrder = orders.some((o) => o.status === 'pending' || o.status === 'processing' || o.status === 'manual_pending');
 
   useEffect(() => {
     if (!hasActiveOrder) return;

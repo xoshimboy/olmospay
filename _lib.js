@@ -3,6 +3,7 @@ import { getStore } from '@netlify/blobs';
 import { and, desc, eq, gt, like, lt, sql } from 'drizzle-orm';
 import { getDatabase, olmosAppState, olmosOrders, olmosPromoCodes, olmosRateLimits } from './db.js';
 import { CATALOG, PAYMENT_CARD, resolveCatalogPack } from './_catalog-map.js';
+import { getCoinReward } from './data/coin-rewards.js';
 
 const SORA_BASE_URL = 'https://sorapay.xuss.us/reseller/v1';
 const MAX_RECEIPT_BYTES = 3 * 1024 * 1024; // Keep base64 JSON payload below Vercel's 4.5 MB function limit
@@ -456,7 +457,7 @@ export async function updateOrder(ref, patch) {
 export async function deleteOrder(ref) {
   const order = await getOrder(ref);
   if (!order) return { ok: false, reason: 'not_found' };
-  if (!['pending', 'manual_pending', 'canceled'].includes(order.status)) {
+  if (order.sourceType === 'coin_reward' || !['pending', 'manual_pending', 'canceled'].includes(order.status)) {
     return { ok: false, reason: 'protected_status' };
   }
 
@@ -692,6 +693,211 @@ export async function getUserCoins(tgUserId) {
   };
 }
 
+export async function redeemCoinReward({ tgUserId, rewardId, requestId, target = '', username = '', firstName = '' }) {
+  const reward = getCoinReward(rewardId);
+  if (!reward) return { ok: false, code: 'invalid_reward' };
+
+  const uid = String(tgUserId || '').trim();
+  const requestToken = String(requestId || '').trim();
+  if (!/^\d{1,20}$/.test(uid) || !/^[A-Za-z0-9-]{16,64}$/.test(requestToken)) {
+    return { ok: false, code: 'invalid_request' };
+  }
+
+  const database = getDatabase();
+  if (!database) return { ok: false, code: 'storage_unavailable' };
+
+  const now = Date.now();
+  const coinKey = `coins:${uid}`;
+  const requestKey = `coin-redemption:${uid}:${requestToken}`;
+  return database.transaction(async (tx) => {
+    await tx
+      .insert(olmosAppState)
+      .values({ key: requestKey, value: {}, updatedAt: new Date(now) })
+      .onConflictDoNothing({ target: olmosAppState.key });
+
+    const [requestRow] = await tx
+      .select({ value: olmosAppState.value })
+      .from(olmosAppState)
+      .where(eq(olmosAppState.key, requestKey))
+      .for('update');
+    const previousResult = requestRow?.value?.result;
+    if (previousResult) return { ...previousResult, replayed: true };
+
+    await tx.delete(olmosAppState).where(and(
+      like(olmosAppState.key, `coin-redemption:${uid}:%`),
+      lt(olmosAppState.updatedAt, new Date(now - 30 * 24 * 60 * 60 * 1000))
+    ));
+
+    await tx
+      .insert(olmosAppState)
+      .values({
+        key: coinKey,
+        value: { balance: 0, totalEarned: 0, history: [] },
+        updatedAt: new Date(now),
+      })
+      .onConflictDoNothing({ target: olmosAppState.key });
+
+    const [coinRow] = await tx
+      .select({ value: olmosAppState.value })
+      .from(olmosAppState)
+      .where(eq(olmosAppState.key, coinKey))
+      .for('update');
+    const currentData = coinRow?.value;
+    const current = currentData && typeof currentData === 'object'
+      ? {
+          balance: Number(currentData.balance || 0),
+          totalEarned: Number(currentData.totalEarned || 0),
+          history: Array.isArray(currentData.history) ? currentData.history : [],
+        }
+      : { balance: 0, totalEarned: 0, history: [] };
+
+    if (current.balance < reward.coinCost) {
+      const result = { ok: false, code: 'insufficient_coins', balance: current.balance };
+      await tx
+        .update(olmosAppState)
+        .set({ value: { result }, updatedAt: new Date() })
+        .where(eq(olmosAppState.key, requestKey));
+      return result;
+    }
+
+    let promoCode = '';
+    let order = null;
+    if (reward.kind === 'discount') {
+      for (let attempt = 0; attempt < 5 && !promoCode; attempt += 1) {
+        const candidate = `OLMOS5-${crypto.randomBytes(5).toString('hex').toUpperCase()}`;
+        const [inserted] = await tx
+          .insert(olmosPromoCodes)
+          .values({
+            code: candidate,
+            discountPercent: 5,
+            maxUses: 1,
+            usedCount: 0,
+            enabled: true,
+            createdAt: now,
+          })
+          .onConflictDoNothing({ target: olmosPromoCodes.code })
+          .returning({ code: olmosPromoCodes.code });
+        if (inserted) promoCode = inserted.code;
+      }
+      if (!promoCode) throw new Error('Unable to create a unique reward promo code');
+    } else {
+      const ref = generateOrderRef();
+      const orderToken = signOrderToken(ref);
+      order = {
+        ref,
+        orderToken,
+        status: 'manual_pending',
+        gameId: 'coin-rewards',
+        gameName: 'Olmos Pay mukofotlari',
+        packId: reward.id,
+        packLabel: reward.orderLabel,
+        priceUzs: 0,
+        coinsReward: 0,
+        playerId: target,
+        playerDisplay: target,
+        tgUserId: uid,
+        tgUsername: String(username || '').trim().slice(0, 64),
+        tgFirstName: String(firstName || '').trim().slice(0, 64),
+        sourceType: 'coin_reward',
+        coinRewardId: reward.id,
+        coinRewardCost: reward.coinCost,
+        coinRefunded: false,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await tx.insert(olmosOrders).values({
+        ref,
+        tgUserId: uid,
+        orderData: order,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    const next = { ...current, balance: current.balance - reward.coinCost };
+    await tx
+      .update(olmosAppState)
+      .set({ value: next, updatedAt: new Date() })
+      .where(eq(olmosAppState.key, coinKey));
+
+    const result = {
+      ok: true,
+      rewardId: reward.id,
+      balance: next.balance,
+      promoCode: promoCode || undefined,
+      order: order || undefined,
+    };
+    await tx
+      .update(olmosAppState)
+      .set({ value: { result }, updatedAt: new Date() })
+      .where(eq(olmosAppState.key, requestKey));
+    return result;
+  });
+}
+
+export async function cancelCoinRewardOrder(ref) {
+  const database = getDatabase();
+  if (!database) return { order: null, refundedCoins: 0 };
+
+  return database.transaction(async (tx) => {
+    const [orderRow] = await tx
+      .select({ orderData: olmosOrders.orderData })
+      .from(olmosOrders)
+      .where(eq(olmosOrders.ref, ref))
+      .for('update');
+    const order = orderRow?.orderData;
+    if (!order || order.sourceType !== 'coin_reward') return { order: order || null, refundedCoins: 0 };
+    if (order.status === 'completed') return { order, refundedCoins: 0 };
+
+    const now = Date.now();
+    let refundedCoins = 0;
+    const cost = Math.max(0, Number(order.coinRewardCost || 0));
+    const uid = String(order.tgUserId || '').trim();
+    if (!order.coinRefunded && cost > 0 && /^\d{1,20}$/.test(uid)) {
+      const coinKey = `coins:${uid}`;
+      await tx
+        .insert(olmosAppState)
+        .values({
+          key: coinKey,
+          value: { balance: 0, totalEarned: 0, history: [] },
+          updatedAt: new Date(now),
+        })
+        .onConflictDoNothing({ target: olmosAppState.key });
+      const [coinRow] = await tx
+        .select({ value: olmosAppState.value })
+        .from(olmosAppState)
+        .where(eq(olmosAppState.key, coinKey))
+        .for('update');
+      const current = coinRow?.value && typeof coinRow.value === 'object'
+        ? {
+            balance: Number(coinRow.value.balance || 0),
+            totalEarned: Number(coinRow.value.totalEarned || 0),
+            history: Array.isArray(coinRow.value.history) ? coinRow.value.history : [],
+          }
+        : { balance: 0, totalEarned: 0, history: [] };
+      await tx
+        .update(olmosAppState)
+        .set({ value: { ...current, balance: current.balance + cost }, updatedAt: new Date(now) })
+        .where(eq(olmosAppState.key, coinKey));
+      refundedCoins = cost;
+    }
+
+    const updated = {
+      ...order,
+      status: 'canceled',
+      customerNotifiedAt: order.customerNotifiedAt || now,
+      coinRefunded: order.coinRefunded || refundedCoins > 0,
+      coinRefundedAt: refundedCoins ? now : order.coinRefundedAt,
+      updatedAt: now,
+    };
+    await tx
+      .update(olmosOrders)
+      .set({ orderData: updated, updatedAt: now })
+      .where(eq(olmosOrders.ref, ref));
+    return { order: updated, refundedCoins };
+  });
+}
+
 export async function creditOrderCoins(order) {
   if (!order || !order.ref || order.status !== 'completed') {
     return { credited: false, coins: 0, newBalance: null };
@@ -726,11 +932,58 @@ export async function creditOrderCoins(order) {
     return { credited: true, coins: reward, newBalance: null };
   }
 
-  const current = await getUserCoins(uid);
-  if (current.history.some((h) => h.ref === latest.ref)) {
-    return { credited: false, coins: reward, newBalance: current.balance };
+  const database = getDatabase();
+  const store = getOrdersBlobStore();
+  const coinKey = `coins:${uid}`;
+  if (database) {
+    return database.transaction(async (tx) => {
+      await tx
+        .insert(olmosAppState)
+        .values({ key: coinKey, value: { balance: 0, totalEarned: 0, history: [] }, updatedAt: new Date(now) })
+        .onConflictDoNothing({ target: olmosAppState.key });
+      const [coinRow] = await tx
+        .select({ value: olmosAppState.value })
+        .from(olmosAppState)
+        .where(eq(olmosAppState.key, coinKey))
+        .for('update');
+      const currentData = coinRow?.value;
+      const current = currentData && typeof currentData === 'object'
+        ? {
+            balance: Number(currentData.balance || 0),
+            totalEarned: Number(currentData.totalEarned || 0),
+            history: Array.isArray(currentData.history) ? currentData.history : [],
+          }
+        : { balance: 0, totalEarned: 0, history: [] };
+      if (current.history.some((entry) => entry.ref === latest.ref)) {
+        return { credited: false, coins: reward, newBalance: current.balance };
+      }
+
+      const next = {
+        balance: current.balance + reward,
+        totalEarned: current.totalEarned + reward,
+        history: [
+          {
+            ref: latest.ref,
+            gameName: latest.gameName || latest.gameId,
+            packLabel: latest.packLabel || latest.packId,
+            coins: reward,
+            at: now,
+          },
+          ...current.history,
+        ].slice(0, 50),
+      };
+      await tx
+        .update(olmosAppState)
+        .set({ value: next, updatedAt: new Date() })
+        .where(eq(olmosAppState.key, coinKey));
+      return { credited: true, coins: reward, newBalance: next.balance };
+    });
   }
 
+  const current = await getUserCoins(uid);
+  if (current.history.some((entry) => entry.ref === latest.ref)) {
+    return { credited: false, coins: reward, newBalance: current.balance };
+  }
   const next = {
     balance: current.balance + reward,
     totalEarned: current.totalEarned + reward,
@@ -745,13 +998,8 @@ export async function creditOrderCoins(order) {
       ...current.history,
     ].slice(0, 50),
   };
-
-  const database = getDatabase();
-  const store = getOrdersBlobStore();
-  if (database) {
-    await setAppStateValue(`coins:${uid}`, next);
-  } else if (store) {
-    await store.setJSON(`coins:${uid}`, next);
+  if (store) {
+    await store.setJSON(coinKey, next);
   } else {
     memoryUserCoins.set(uid, next);
   }

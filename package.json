@@ -8,7 +8,7 @@
     "start": "NODE_ENV=production tsx server.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "tsx --test format.test.ts smm-pricing.test.js admin-panel.test.js support.test.js",
+    "test": "tsx --test format.test.ts smm-pricing.test.js admin-panel.test.js support.test.js redeem-reward.test.js",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
   },

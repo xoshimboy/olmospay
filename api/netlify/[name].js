@@ -7,6 +7,7 @@ import { handler as subscriptionHandler } from '../../subscription.js';
 import { handler as supportHandler } from '../../support.js';
 import { handler as telegramWebhookHandler } from '../../tg-webhook.js';
 import { handler as userCoinsHandler } from '../../user-coins.js';
+import { handler as redeemRewardHandler } from '../../redeem-reward.js';
 import { ensureTelegramWebhook } from '../../_lib.js';
 
 const handlers = {
@@ -19,6 +20,7 @@ const handlers = {
   support: supportHandler,
   'tg-webhook': telegramWebhookHandler,
   'user-coins': userCoinsHandler,
+  'redeem-reward': redeemRewardHandler,
 };
 
 function normalizeHeaders(headers = {}) {

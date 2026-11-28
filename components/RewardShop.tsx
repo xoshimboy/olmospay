@@ -248,8 +248,8 @@ export function RewardShop({ lang, initData, balance, customMedia, onSuccess }: 
               >
                 <div className="flex items-start gap-3">
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-amber-500/10 text-amber-700 dark:text-[#E5B94C]">
-                    {reward.id === 'telegram-gift' && customMedia['reward:telegram-gift'] ? (
-                      <img src={customMedia['reward:telegram-gift']} alt="Telegram sovg‘asi" className="h-full w-full object-cover" />
+                    {customMedia[`reward:${reward.id}`] ? (
+                      <img src={customMedia[`reward:${reward.id}`]} alt={`${title} mukofoti`} className="h-full w-full object-cover" />
                     ) : (
                       <Icon size={20} aria-hidden="true" />
                     )}

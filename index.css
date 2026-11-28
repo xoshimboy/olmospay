@@ -198,16 +198,42 @@ body {
   100% { transform: scale(0.3) rotate(-12deg) translate(-12px, 32px); opacity: 0; }
 }
 
+@keyframes ios-mesh-breathe {
+  from {
+    transform: scale(1) translate3d(-1%, 0%, 0);
+    opacity: 0.62;
+  }
+  to {
+    transform: scale(1.08) translate3d(1%, 1%, 0);
+    opacity: 0.92;
+  }
+}
+
+.ios-mesh-bloom {
+  background:
+    radial-gradient(ellipse at 18% 20%, rgba(0, 122, 255, 0.14), transparent 44%),
+    radial-gradient(ellipse at 78% 72%, rgba(88, 86, 214, 0.11), transparent 46%);
+  animation: ios-mesh-breathe 30s cubic-bezier(0.37, 0, 0.63, 1) infinite alternate;
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+
+.dark .ios-mesh-bloom {
+  background:
+    radial-gradient(ellipse at 18% 20%, rgba(29, 78, 216, 0.13), transparent 44%),
+    radial-gradient(ellipse at 78% 72%, rgba(229, 185, 76, 0.08), transparent 46%);
+}
+
 @keyframes ios-orb-drift-a {
   0%,
   100% {
     transform: translate3d(0%, 0%, 0) scale(1);
   }
   33% {
-    transform: translate3d(14%, -10%, 0) scale(1.12);
+    transform: translate3d(10%, -7%, 0) scale(1.08);
   }
   66% {
-    transform: translate3d(-10%, 12%, 0) scale(0.94);
+    transform: translate3d(-7%, 8%, 0) scale(0.96);
   }
 }
 
@@ -217,10 +243,10 @@ body {
     transform: translate3d(0%, 0%, 0) scale(1);
   }
   40% {
-    transform: translate3d(-16%, 10%, 0) scale(1.15);
+    transform: translate3d(-11%, 7%, 0) scale(1.09);
   }
   75% {
-    transform: translate3d(10%, -14%, 0) scale(0.92);
+    transform: translate3d(7%, -9%, 0) scale(0.96);
   }
 }
 
@@ -230,23 +256,41 @@ body {
     transform: translate3d(0%, 0%, 0) scale(1) rotate(0deg);
   }
   50% {
-    transform: translate3d(12%, 8%, 0) scale(1.08) rotate(12deg);
+    transform: translate3d(8%, 6%, 0) scale(1.05) rotate(8deg);
   }
 }
 
 .animate-ios-orb-a {
-  animation: ios-orb-drift-a 16s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  animation: ios-orb-drift-a 26s cubic-bezier(0.37, 0, 0.63, 1) infinite;
   will-change: transform;
 }
 
 .animate-ios-orb-b {
-  animation: ios-orb-drift-b 20s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  animation: ios-orb-drift-b 32s cubic-bezier(0.37, 0, 0.63, 1) infinite;
   will-change: transform;
 }
 
 .animate-ios-orb-c {
-  animation: ios-orb-drift-c 24s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  animation: ios-orb-drift-c 38s cubic-bezier(0.37, 0, 0.63, 1) infinite;
   will-change: transform;
+}
+
+svg.lucide {
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  shape-rendering: geometricPrecision;
+  transition: color 180ms ease, transform 180ms ease;
+}
+
+.ios-bottom-nav__item.is-active svg.lucide {
+  stroke-width: 2.1;
+}
+
+@media (hover: hover) {
+  button:hover svg.lucide {
+    transform: translateY(-1px);
+  }
 }
 
 .ios-glass-card {

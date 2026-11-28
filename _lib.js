@@ -607,6 +607,7 @@ export async function rememberTelegramCustomer(user) {
     username: String(user?.username || '').trim().slice(0, 64),
     firstName: String(user?.first_name || '').trim().slice(0, 64),
     lastName: String(user?.last_name || '').trim().slice(0, 64),
+    lastActiveAt: Date.now(),
   };
   const database = getDatabase();
   if (database) {
@@ -615,6 +616,20 @@ export async function rememberTelegramCustomer(user) {
     memoryTelegramCustomers.set(id, customer);
   }
   return customer;
+}
+
+export async function countRecentlyActiveTelegramUsers(windowMs = 5 * 60 * 1000) {
+  const safeWindowMs = Math.min(Math.max(Number(windowMs) || 5 * 60 * 1000, 30_000), 60 * 60 * 1000);
+  const activeAfter = Date.now() - safeWindowMs;
+  const database = getDatabase();
+  const customers = database
+    ? await database
+        .select({ value: olmosAppState.value })
+        .from(olmosAppState)
+        .where(like(olmosAppState.key, 'telegram-customer:%'))
+    : [...memoryTelegramCustomers.values()].map((value) => ({ value }));
+
+  return customers.filter(({ value }) => Number(value?.lastActiveAt) >= activeAfter).length;
 }
 
 export async function listTelegramCustomerIds() {

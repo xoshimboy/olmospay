@@ -19,6 +19,7 @@ import {
   getOrderStatistics,
   listAllOrders,
   listTelegramCustomerIds,
+  countRecentlyActiveTelegramUsers,
   recordAdminMessageLog,
   saveCardSettings,
   soraRequest,
@@ -92,7 +93,7 @@ export async function handler(event) {
   }
 
   if (event.httpMethod === 'GET') {
-    const [orders, stats, card, soraMe, soraSvc, tgMe, customerIds, messageLogs, storefrontSettings, promoCodes] = await Promise.all([
+    const [orders, stats, card, soraMe, soraSvc, tgMe, customerIds, activeUsers, messageLogs, storefrontSettings, promoCodes] = await Promise.all([
       listAllOrders(60),
       getOrderStatistics(),
       getCardSettings(),
@@ -100,6 +101,7 @@ export async function handler(event) {
       soraRequest('/services', { method: 'GET', useCache: true }),
       process.env.TG_BOT_TOKEN ? telegramApi('getMe', {}) : Promise.resolve(null),
       listTelegramCustomerIds(),
+      countRecentlyActiveTelegramUsers(),
       getAdminMessageLogs(30),
       getStorefrontSettings(),
       listPromoCodes(),
@@ -114,6 +116,7 @@ export async function handler(event) {
         stats: {
           ...stats,
           uniqueCustomers: customerIds.length,
+          activeUsers,
           storeServicesCount: CATALOG.length,
         },
         orders,
@@ -241,7 +244,7 @@ export async function handler(event) {
       if (targetType === 'broadcast') {
         const ids = await listTelegramCustomerIds();
         if (ids.length === 0) {
-          return jsonResponse(400, { ok: false, error: 'Hali Telegram orqali buyurtma bergan mijozlar yo‘q' }, origin);
+          return jsonResponse(400, { ok: false, error: 'Hali botda /start bosgan foydalanuvchilar yo‘q' }, origin);
         }
         let sentCount = 0;
         let failedCount = 0;

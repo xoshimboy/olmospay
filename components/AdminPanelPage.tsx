@@ -31,6 +31,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { BANNER_IMAGES, CARD_INFO } from '../data/catalog';
+import { COIN_REWARDS } from '../data/coin-rewards.js';
 import type { I18nDict } from '../data/i18n';
 import type { CardInfo, GameItem, Lang, OrderStatus, ThemeMode } from '../types';
 import { compressBannerImage, compressCoverImage, formatOrderDate, formatUzs } from '../utils/format';
@@ -106,6 +107,7 @@ interface AdminDashboardData {
     canceledOrders: number;
     totalRevenueUzs: number;
     uniqueCustomers: number;
+    activeUsers: number;
     storeServicesCount: number;
   };
   orders: AdminOrderRecord[];
@@ -310,6 +312,14 @@ export function AdminPanelPage({
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
+
+  useEffect(() => {
+    if (!dashboard) return;
+    const refreshTimer = window.setInterval(() => {
+      void loadDashboard();
+    }, 60_000);
+    return () => window.clearInterval(refreshTimer);
+  }, [dashboard, loadDashboard]);
 
   function handleKeySubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -913,8 +923,8 @@ export function AdminPanelPage({
                   </button>
                 </div>
 
-                {/* 4 iOS White KPI Cards */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3.5">
+                {/* Dashboard KPI cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3.5">
                   <div className="rounded-[20px] border border-black/[0.05] bg-white p-5 space-y-1 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                     <p className="text-xs font-medium text-[#8E8E93]">Jami buyurtmalar</p>
                     <p className="font-mono-num text-2xl font-bold text-[#1C1C1E]">
@@ -940,8 +950,14 @@ export function AdminPanelPage({
                     </p>
                   </div>
                   <div className="rounded-[20px] border border-black/[0.05] bg-white p-5 space-y-1 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-                    <p className="text-xs font-medium text-[#8E8E93]">Telegram mijozlari</p>
+                    <p className="text-xs font-medium text-[#8E8E93]">Jami bot foydalanuvchilari</p>
                     <p className="font-mono-num text-2xl font-bold text-[#1C1C1E]">{dashboard.stats.uniqueCustomers}</p>
+                    <p className="text-xs text-[#8E8E93]">/start bosgan yoki buyurtma qilganlar</p>
+                  </div>
+                  <div className="rounded-[20px] border border-[#007AFF]/15 bg-[#007AFF]/[0.04] p-5 space-y-1 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                    <p className="text-xs font-medium text-[#6C6C70]">Faol userlar · 5 daqiqa</p>
+                    <p className="font-mono-num text-2xl font-bold text-[#007AFF]">{dashboard.stats.activeUsers}</p>
+                    <p className="text-xs text-[#6C6C70]">Oxirgi 5 daqiqada botga yozganlar</p>
                   </div>
                 </div>
 
@@ -1417,32 +1433,61 @@ export function AdminPanelPage({
             )}
 
             {activeTab === 'rewards' && (
-              <section className="admin-enter max-w-2xl rounded-[22px] border border-black/[0.05] bg-white p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600"><Gift size={20} /></div>
-                  <div>
-                    <h2 className="font-display text-lg font-bold text-[#1C1C1E]">Telegram Gift rasmi</h2>
-                    <p className="text-sm text-[#6C6C70]">Yuklangan rasm profil mukofotlaridagi sovg‘a kartasida ko‘rinadi.</p>
-                  </div>
+              <section className="admin-enter space-y-4">
+                <div>
+                  <h2 className="font-display text-2xl font-bold text-[#1C1C1E]">Mukofot rasmlari</h2>
+                  <p className="mt-1 text-sm text-[#6C6C70]">Har bir mukofotga alohida rasm yuklang. Rasm foydalanuvchining mukofotlar oynasida ko‘rinadi.</p>
                 </div>
-                <div className="mt-5 flex flex-wrap items-center gap-4">
-                  {customMedia['reward:telegram-gift'] ? (
-                    <img src={customMedia['reward:telegram-gift']} alt="Telegram Gift mukofoti rasmi" className="h-24 w-24 rounded-2xl border border-black/10 object-cover" />
-                  ) : (
-                    <div className="flex h-24 w-24 items-center justify-center rounded-2xl border border-dashed border-black/15 bg-[#F8F9FC] text-[#8E8E93]"><ImagePlus size={26} /></div>
-                  )}
-                  <div className="flex flex-wrap gap-2">
-                    <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full bg-[#007AFF] px-4 text-sm font-semibold text-white hover:bg-[#0066D6]">
-                      {busyMediaId === 'reward:telegram-gift' ? <Loader2 size={15} className="animate-spin" /> : <ImagePlus size={16} />}
-                      {customMedia['reward:telegram-gift'] ? 'Rasmni almashtirish' : 'Rasm yuklash'}
-                      <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={busyMediaId === 'reward:telegram-gift'} onChange={(event) => { void handleMediaUpload('reward:telegram-gift', event.target.files?.[0]); event.currentTarget.value = ''; }} />
-                    </label>
-                    {customMedia['reward:telegram-gift'] && (
-                      <button type="button" disabled={busyMediaId === 'reward:telegram-gift'} onClick={() => void handleMediaDelete('reward:telegram-gift')} className="min-h-11 rounded-full border border-black/10 px-4 text-sm font-semibold text-[#D70015] disabled:opacity-50">Rasmni olib tashlash</button>
-                    )}
-                  </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {COIN_REWARDS.map((reward) => {
+                    const mediaId = `reward:${reward.id}`;
+                    const imageUrl = customMedia[mediaId];
+                    const isBusy = busyMediaId === mediaId;
+                    return (
+                      <article key={reward.id} className="flex items-center gap-4 rounded-[20px] border border-black/[0.05] bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                        {imageUrl ? (
+                          <img src={imageUrl} alt={`${reward.orderLabel} mukofoti`} className="h-20 w-20 shrink-0 rounded-2xl border border-black/10 object-cover" />
+                        ) : (
+                          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl border border-dashed border-black/15 bg-[#F8F9FC] text-[#8E8E93]" aria-hidden="true">
+                            <ImagePlus size={24} />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1 space-y-2">
+                          <div>
+                            <h3 className="text-sm font-bold text-[#1C1C1E]">{reward.orderLabel}</h3>
+                            <p className="mt-0.5 text-xs text-[#8E8E93]">{reward.coinCost} tanga</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <label className="inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-full bg-[#007AFF] px-3 text-xs font-semibold text-white hover:bg-[#0066D6]">
+                              {isBusy ? <Loader2 size={14} className="animate-spin" /> : <ImagePlus size={14} />}
+                              {imageUrl ? 'Rasmni almashtirish' : 'Rasm yuklash'}
+                              <input
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                aria-label={`${reward.orderLabel} uchun rasm yuklash`}
+                                className="sr-only"
+                                disabled={isBusy}
+                                onChange={(event) => { void handleMediaUpload(mediaId, event.target.files?.[0]); event.currentTarget.value = ''; }}
+                              />
+                            </label>
+                            {imageUrl && (
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                aria-label={`${reward.orderLabel} rasmini olib tashlash`}
+                                onClick={() => void handleMediaDelete(mediaId)}
+                                className="min-h-10 rounded-full border border-black/10 px-3 text-xs font-semibold text-[#D70015] disabled:opacity-50"
+                              >
+                                Olib tashlash
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
-                <p className="mt-4 text-xs text-[#8E8E93]">JPEG, PNG yoki WebP, 4 MB gacha.</p>
+                <p className="text-xs text-[#8E8E93]">JPEG, PNG yoki WebP formatida, 4 MB gacha.</p>
               </section>
             )}
 
@@ -1843,8 +1888,8 @@ export function AdminPanelPage({
                             <Users size={19} />
                           </div>
                           <div>
-                            <p className="text-sm font-bold text-[#1C1C1E]">{dashboard.stats.uniqueCustomers} ta Telegram mijoz</p>
-                            <p className="text-xs text-[#6C6C70]">Xabar buyurtma bergan noyob mijozlarga yuboriladi.</p>
+                            <p className="text-sm font-bold text-[#1C1C1E]">{dashboard.stats.uniqueCustomers} ta bot foydalanuvchisi</p>
+                            <p className="text-xs text-[#6C6C70]">Xabar /start bosgan yoki buyurtma qilgan foydalanuvchilarga yuboriladi.</p>
                           </div>
                         </div>
                         <label className="flex items-start gap-2.5 text-sm text-[#1C1C1E]">

@@ -497,6 +497,20 @@ export async function executeSoraApproval({
 export async function processTelegramUpdate(update) {
   if (!update || typeof update !== 'object') return;
   const adminId = String(process.env.TG_ADMIN_ID || '').trim();
+  const activeUser =
+    update.message?.from ||
+    update.edited_message?.from ||
+    update.callback_query?.from ||
+    update.inline_query?.from ||
+    update.chosen_inline_result?.from ||
+    update.pre_checkout_query?.from;
+  if (activeUser?.id && String(activeUser.id) !== adminId) {
+    try {
+      await rememberTelegramCustomer(activeUser);
+    } catch {
+      console.error('[tg-webhook] Failed to record user activity');
+    }
+  }
 
   if (update.pre_checkout_query) {
     await handleSupportPreCheckout(update.pre_checkout_query);
@@ -516,7 +530,6 @@ export async function processTelegramUpdate(update) {
     const webAppUrl = getMiniAppHttpsUrl();
 
     if (text === '/start' || text.startsWith('/start ') || text.startsWith('/start@') || text === '/help' || text === '/menu') {
-      await rememberTelegramCustomer(fromUser);
       const firstName = escapeHtml(fromUser?.first_name || 'Do‘st');
       const coinState = fromUser?.id ? await getUserCoins(fromUser.id) : { balance: 0 };
       const lines = [

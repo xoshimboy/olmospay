@@ -787,6 +787,7 @@ export default function App() {
         aria-hidden="true"
         className="fixed inset-0 -z-10 overflow-hidden pointer-events-none bg-gradient-to-br from-[#F4F7FC] via-[#FAFCFF] to-[#EEF4FF] dark:from-[#09090B] dark:via-[#0B0D14] dark:to-[#09090B]"
       >
+        <div className="ios-mesh-bloom absolute inset-0" />
         <div className="animate-ios-orb-a absolute -top-28 -left-20 h-[420px] w-[420px] rounded-full bg-[#93C5FD]/35 blur-3xl dark:bg-[#1D4ED8]/15" />
         <div className="animate-ios-orb-b absolute top-1/4 -right-24 h-[460px] w-[460px] rounded-full bg-[#67E8F9]/30 blur-3xl dark:bg-[#E5B94C]/10" />
         <div className="animate-ios-orb-c absolute -bottom-28 left-1/3 h-[440px] w-[440px] rounded-full bg-[#A5B4FC]/30 blur-3xl dark:bg-[#3B82F6]/10" />
